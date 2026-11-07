@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Keep .kiro/ in the repo",
+      "trigger": "PreToolUse",
+      "description": "Blocks git add/commit while .kiro/ is gitignored, because the Kiroween rules disqualify submissions without it.",
+      "matcher": "execute_bash|control_bash_process",
+      "action": {
+        "type": "command",
+        "command": "sh scripts/hooks/guard-kiro-committed.sh",
+        "timeout": 10
+      }
+    }
+  ]
+}

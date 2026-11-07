@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Re-prove ports on save",
+      "trigger": "PostFileSave",
+      "description": "When a port, the COBOL numeric semantics or the harness is saved, re-run unit and equivalence tests and show each program's verdict and any counterexample.",
+      "matcher": "src/(ports|semantics|harness)/[^/]+\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "npm test --silent 2>&1 | grep -E '^(INTCALC|PAYROLL|INVOICE):|  (input|cobol|port|replay):|Test Files|Tests |FAIL' | tail -30",
+        "timeout": 180
+      }
+    }
+  ]
+}

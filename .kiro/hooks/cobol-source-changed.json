@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "COBOL changed: re-verify the port",
+      "trigger": "PostFileSave",
+      "description": "When legacy COBOL changes, make the agent re-run the proof and bring the port back into line, treating the COBOL as the source of truth.",
+      "matcher": "cobol/programs/[^/]+\\.cbl$",
+      "action": {
+        "type": "agent",
+        "prompt": "A legacy COBOL program in cobol/programs/ was just changed. The COBOL is the source of truth. Run `npm run test:equivalence` for that program. If its port now diverges, update the matching port in src/ports/ (and shared rules in src/semantics/ if the behaviour is general) until it matches the COBOL exactly, even if the COBOL behaviour looks like a bug. Keep the quoted COBOL statement comments in the port in sync. Then add a short entry to docs/kiro-journal.md saying what changed, what the shrunk counterexample was, and how the port was fixed."
+      }
+    }
+  ]
+}
