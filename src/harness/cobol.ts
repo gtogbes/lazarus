@@ -34,32 +34,36 @@ function assertImage(): void {
   }
 }
 
-function dockerArgs(...command: string[]): string[] {
-  return ['run', '--rm', '-i', '--network', 'none', '-v', `${COBOL_DIR}:/work`, GNUCOBOL_IMAGE, ...command];
+function dockerArgs(cobolDir: string, ...command: string[]): string[] {
+  return ['run', '--rm', '-i', '--network', 'none', '-v', `${cobolDir}:/work`, GNUCOBOL_IMAGE, ...command];
 }
 
 /**
- * Compile `cobol/programs/<program>.cbl` to `cobol/bin/<program>`.
+ * Compile `<cobolDir>/programs/<program>.cbl` to `<cobolDir>/bin/<program>`.
  * Skips compilation when the source hash matches the last successful build.
+ * `cobolDir` defaults to the repo's `cobol/` folder; tests pass a temp folder.
  */
-export function compileCobol(program: string): void {
+export function compileCobol(program: string, cobolDir: string = COBOL_DIR): 'compiled' | 'cached' {
   assertProgramName(program);
-  const source = join(COBOL_DIR, 'programs', `${program}.cbl`);
+  const source = join(cobolDir, 'programs', `${program}.cbl`);
   if (!existsSync(source)) throw new Error(`COBOL source not found: ${source}`);
 
   const hash = createHash('sha256').update(readFileSync(source)).digest('hex');
-  const binary = join(COBOL_DIR, 'bin', program);
+  const binary = join(cobolDir, 'bin', program);
   const hashFile = `${binary}.sha256`;
-  if (existsSync(binary) && existsSync(hashFile) && readFileSync(hashFile, 'utf8') === hash) return;
+  if (existsSync(binary) && existsSync(hashFile) && readFileSync(hashFile, 'utf8') === hash) return 'cached';
 
   assertImage();
-  mkdirSync(join(COBOL_DIR, 'bin'), { recursive: true });
-  const result = spawnSync('docker', dockerArgs('cobc', '-x', '-o', `bin/${program}`, `programs/${program}.cbl`), {
-    encoding: 'utf8',
-  });
+  mkdirSync(join(cobolDir, 'bin'), { recursive: true });
+  const result = spawnSync(
+    'docker',
+    dockerArgs(cobolDir, 'cobc', '-x', '-o', `bin/${program}`, `programs/${program}.cbl`),
+    { encoding: 'utf8' },
+  );
   if (result.error) throw result.error;
   if (result.status !== 0) throw new CompileError(program, `${result.stdout}${result.stderr}`);
   writeFileSync(hashFile, hash);
+  return 'compiled';
 }
 
 /**
@@ -76,7 +80,7 @@ export class CobolSession {
 
   private constructor(readonly program: string) {
     // stdbuf -oL makes GnuCOBOL flush after every record instead of at exit.
-    this.child = spawn('docker', dockerArgs('stdbuf', '-oL', `bin/${program}`));
+    this.child = spawn('docker', dockerArgs(COBOL_DIR, 'stdbuf', '-oL', `bin/${program}`));
     this.child.stderr.setEncoding('utf8').on('data', (chunk: string) => (this.stderr += chunk));
     createInterface({ input: this.child.stdout }).on('line', (line) => {
       const next = this.waiting.shift();

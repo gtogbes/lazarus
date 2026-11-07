@@ -31,5 +31,6 @@
   - Both ports pass 50,000 cases. Mutation checks: 5 of 6 rule-breaking edits caught
     within 26 cases; the 6th (`<=` vs `<` on a tax band edge) is an equivalent mutant
   - _Requirements: 2.1, 3, 4_
-- [ ] 11. Unit tests for `compileCobol` cache and `CompileError` path
+- [x] 11. Unit tests for `compileCobol` cache and `CompileError` path
+  - `src/harness/cobol.test.ts`, compiles into a temp folder (needs Docker)
   - _Requirements: 1.2, 1.3_
