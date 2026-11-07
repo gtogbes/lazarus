@@ -60,3 +60,36 @@ the right width.
 **Results file.** Switched the harness from `fc.assert` to `fc.check` so it can
 write `results/<PROGRAM>.json` (status, seed, case count, shrinks,
 counterexample) before failing. This is what the UI will read.
+
+## 2026-11-02: hooks
+
+Three hooks in `.kiro/hooks/`:
+- **Re-prove ports on save** (command, PostFileSave on `src/ports|semantics|harness`):
+  runs unit and equivalence tests and shows each program's verdict and any
+  counterexample.
+- **COBOL changed: re-verify the port** (agent, PostFileSave on `cobol/programs/*.cbl`):
+  tells Kiro the COBOL is the source of truth and to fix the port until it
+  matches, then log the change here.
+- **Keep .kiro/ in the repo** (command, PreToolUse on shell tools): blocks
+  `git add`/`git commit` while `.kiro/` is gitignored, because the rules
+  disqualify submissions without it.
+
+Testing the guard hook caught a bug in it: `git check-ignore` skips files that
+are already tracked, so it never blocked. `--no-index` fixed it. I only found
+this because I tested the block case on purpose rather than just the pass case.
+
+Also: Kiro's `createHook` writes to the open workspace root. With `Hackathons/`
+open, the hooks landed outside the project and had to be moved into
+`lazarus/.kiro/hooks/`. Open the project folder itself as the workspace.
+
+## 2026-11-02: reanimation lab spec
+
+Wrote `.kiro/specs/reanimation-lab/` before any UI code. The spec changed the
+plan in two ways:
+- **Sabotage mode.** Writing Requirement 4 ("prove the tests are not passing by
+  default") turned the manual mutation script into a product feature: visitors
+  pick a realistic migration mistake and watch the proof catch it. The same
+  mutants become a permanent mutation test.
+- **No visitor-edited code.** Letting judges edit the port would mean running
+  arbitrary code on the Lambda. Predefined mutants give the same "break it
+  yourself" moment with no code execution risk.
