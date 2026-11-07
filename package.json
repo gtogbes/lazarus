@@ -1,0 +1,24 @@
+{
+  "name": "lazarus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Port legacy COBOL to TypeScript and prove the port behaves identically.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "cobol:image": "docker build -t lazarus-gnucobol:3.1.2 docker/gnucobol",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:unit": "vitest --run --exclude '**/*.equivalence.test.ts'",
+    "test:equivalence": "vitest --run src/ports"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
