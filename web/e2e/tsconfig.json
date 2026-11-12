@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.node.json",
+  "compilerOptions": {
+    // The accessibility specs read focus and computed styles in the page.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+  },
+  "include": ["."]
+}

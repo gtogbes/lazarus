@@ -1,0 +1,51 @@
+{
+  "name": "@lazarus/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reanimation lab: the Lazarus web UI.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p perf/tsconfig.json && tsc -p e2e/tsconfig.json && tsc -p e2e-csp/tsconfig.json",
+    "test": "vitest --run",
+    "test:e2e": "playwright test",
+    "test:e2e:csp": "playwright test -c e2e-csp/playwright.config.ts",
+    "perf:scene": "playwright test -c perf/playwright.config.ts",
+    "perf:lighthouse": "tsx perf/lighthouse.ts"
+  },
+  "dependencies": {
+    "postprocessing": "6.39.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1",
+    "three": "0.187.0",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@playwright/test": "1.65.0",
+    "@tailwindcss/vite": "4.3.5",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.10",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.187.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "draco3dgltf": "1.5.9",
+    "fast-check": "4.10.2",
+    "jsdom": "31.0.0",
+    "lighthouse": "13.6.0",
+    "shiki": "4.6.0",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}

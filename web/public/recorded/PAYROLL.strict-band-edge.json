@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "started",
+      "program": "PAYROLL",
+      "mutant": "strict-band-edge",
+      "seed": 20261204,
+      "reference": "lazarus-gnucobol:3.1.2",
+      "numRuns": 2000
+    },
+    {
+      "type": "progress",
+      "executions": 745,
+      "divergences": 0,
+      "elapsedMs": 252
+    },
+    {
+      "type": "progress",
+      "executions": 1770,
+      "divergences": 0,
+      "elapsedMs": 502
+    },
+    {
+      "type": "progress",
+      "executions": 2000,
+      "divergences": 0,
+      "elapsedMs": 558
+    },
+    {
+      "type": "result",
+      "result": {
+        "program": "PAYROLL",
+        "reference": "lazarus-gnucobol:3.1.2",
+        "generatedAt": "2026-11-09T11:30:12.154Z",
+        "seed": 20261204,
+        "cases": 2000,
+        "shrinks": 0,
+        "durationMs": 557,
+        "status": "equivalent"
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "started",
+      "program": "INTCALC",
+      "mutant": "penalty-at-zero",
+      "seed": 20261204,
+      "reference": "lazarus-gnucobol:3.1.2",
+      "numRuns": 2000
+    },
+    {
+      "type": "progress",
+      "executions": 45,
+      "divergences": 22,
+      "elapsedMs": 74
+    },
+    {
+      "type": "result",
+      "result": {
+        "program": "INTCALC",
+        "reference": "lazarus-gnucobol:3.1.2",
+        "generatedAt": "2026-11-09T11:30:10.774Z",
+        "seed": 20261204,
+        "cases": 5,
+        "shrinks": 21,
+        "durationMs": 72,
+        "status": "diverged",
+        "counterexample": {
+          "records": [
+            "0A0A0AA0+00000000000000000000"
+          ],
+          "cobol": [
+            "0A0A0AA0 000000 +000000000 +00000000000"
+          ],
+          "port": [
+            "0A0A0AA0 125000 +000000000 +00000000000"
+          ],
+          "line": 0,
+          "column": 9
+        }
+      }
+    }
+  ]
+}

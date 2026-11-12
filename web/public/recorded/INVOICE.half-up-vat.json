@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "started",
+      "program": "INVOICE",
+      "mutant": "half-up-vat",
+      "seed": 20261204,
+      "reference": "lazarus-gnucobol:3.1.2",
+      "numRuns": 2000
+    },
+    {
+      "type": "progress",
+      "executions": 636,
+      "divergences": 17,
+      "elapsedMs": 204
+    },
+    {
+      "type": "result",
+      "result": {
+        "program": "INVOICE",
+        "reference": "lazarus-gnucobol:3.1.2",
+        "generatedAt": "2026-11-09T11:30:12.960Z",
+        "seed": 20261204,
+        "cases": 86,
+        "shrinks": 16,
+        "durationMs": 202,
+        "status": "diverged",
+        "counterexample": {
+          "records": [
+            "0AAA0A94748218791535S",
+            "0000AA00000000000000S"
+          ],
+          "cobol": [
+            "0AAA0A OK 864825934 462681874 070375210 472519270",
+            "0000AA OK 000000000 000000000 000000000 000000000"
+          ],
+          "port": [
+            "0AAA0A OK 864825934 462681874 070375211 472519271",
+            "0000AA OK 000000000 000000000 000000000 000000000"
+          ],
+          "line": 0,
+          "column": 38
+        }
+      }
+    }
+  ]
+}

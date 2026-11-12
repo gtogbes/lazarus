@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "started",
+      "program": "PAYROLL",
+      "mutant": "half-up-tax",
+      "seed": 20261204,
+      "reference": "lazarus-gnucobol:3.1.2",
+      "numRuns": 2000
+    },
+    {
+      "type": "progress",
+      "executions": 139,
+      "divergences": 20,
+      "elapsedMs": 96
+    },
+    {
+      "type": "result",
+      "result": {
+        "program": "PAYROLL",
+        "reference": "lazarus-gnucobol:3.1.2",
+        "generatedAt": "2026-11-09T11:30:11.462Z",
+        "seed": 20261204,
+        "cases": 1,
+        "shrinks": 19,
+        "durationMs": 95,
+        "status": "diverged",
+        "counterexample": {
+          "records": [
+            "AA0A00049122648+0000000",
+            "0A0AA0000000000+0000000"
+          ],
+          "cobol": [
+            "AA0A00 OK 0111202 0002800 +0108402",
+            "0A0AA0 OK 0000000 0000000 +0000000"
+          ],
+          "port": [
+            "AA0A00 OK 0111202 0002801 +0108401",
+            "0A0AA0 OK 0000000 0000000 +0000000"
+          ],
+          "line": 0,
+          "column": 24
+        }
+      }
+    }
+  ]
+}

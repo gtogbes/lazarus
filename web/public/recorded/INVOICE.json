@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "type": "started",
+      "program": "INVOICE",
+      "seed": 20261204,
+      "reference": "lazarus-gnucobol:3.1.2",
+      "numRuns": 2000
+    },
+    {
+      "type": "progress",
+      "executions": 778,
+      "divergences": 0,
+      "elapsedMs": 251
+    },
+    {
+      "type": "progress",
+      "executions": 1794,
+      "divergences": 0,
+      "elapsedMs": 501
+    },
+    {
+      "type": "progress",
+      "executions": 2000,
+      "divergences": 0,
+      "elapsedMs": 552
+    },
+    {
+      "type": "result",
+      "result": {
+        "program": "INVOICE",
+        "reference": "lazarus-gnucobol:3.1.2",
+        "generatedAt": "2026-11-09T11:30:12.732Z",
+        "seed": 20261204,
+        "cases": 2000,
+        "shrinks": 0,
+        "durationMs": 550,
+        "status": "equivalent"
+      }
+    }
+  ]
+}
