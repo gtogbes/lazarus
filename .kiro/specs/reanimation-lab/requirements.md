@@ -114,5 +114,5 @@ is proven, so that I can pick one to inspect.
 4. The 3D scene SHALL hold 60 fps on a mid-range laptop and its assets SHALL total under 8 MB.
 
 ## Open decisions
-- AWS region for the proof API (default proposal: eu-west-2, London).
+- ~~AWS region for the proof API~~ Decided: us-east-1 (owner, 2026-11-07).
 - Custom domain, or the CloudFront default domain.

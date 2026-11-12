@@ -6,7 +6,7 @@
 - Vitest for tests, fast-check for property-based tests.
 - GnuCOBOL runs in Docker using a pinned image tag. Never require a local `cobc` install.
 - Web UI: Vite + React + Tailwind CSS.
-- 3D: three.js via React Three Fiber + drei, assets authored in Blender (see design.md).
+- 3D: plain three.js (React Three Fiber 9 was dropped: it constructs the deprecated THREE.Clock), assets authored in Blender (see design.md).
 
 ## COBOL numeric semantics (critical)
 Ports must reproduce COBOL behaviour exactly:

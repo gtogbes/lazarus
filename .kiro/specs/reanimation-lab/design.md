@@ -23,7 +23,7 @@ Browser ──GET──► CloudFront ──► S3 (site, COBOL + port sources, 
 | How mutants are defined | Hand-written mutant ports with metadata in `src/ports/<prog>.mutants.ts` | Realistic, explainable mistakes; doubles as a permanent mutation test | Random code mutation (unexplainable), letting visitors edit code (unsafe: arbitrary code execution on our Lambda) |
 | No LLM in the hosted app | Ports and mutants are pre-written | Rule: free, unrestricted access until judging ends, without our cost exposure | Live translation (cost, abuse, non-determinism) |
 | Frontend stack | Vite + React 19 + TypeScript strict + Tailwind CSS 4; Zustand for proof-run state; React Router | Matches workspace standards; small state surface | Next.js (no SSR needed for a static lab) |
-| 3D | three.js via React Three Fiber 9 + drei 10 + postprocessing, assets from Blender | See steering `design.md` | Pure CSS/2D (misses the realism goal) |
+| 3D | plain three.js (own render loop on THREE.Timer) + postprocessing, assets from Blender | See steering `design.md` | Pure CSS/2D (misses the realism goal) |
 
 ## Components
 
@@ -97,12 +97,22 @@ shows the mutant's `explanation`, shrink count, and
 - `SiteStack`: private S3 bucket, CloudFront distribution with OAC, CSP and
   security headers via a response headers policy, `/api/*` behaviour to the Function URL (OAC, no caching).
 - `ProofApiStack`: Lambda from `docker/lambda/Dockerfile` (arm64, 1,024 MB,
-  30 s timeout, reserved concurrency 5), Function URL with `AWS_IAM` auth and
+  30 s timeout, reserved concurrency 1), Function URL with `AWS_IAM` auth and
   `RESPONSE_STREAM` invoke mode, log group with 90-day retention.
+- No WAF: omitted for cost (owner decision). Protection is the `AWS_IAM` auth
+  type, a resource policy that admits only this CloudFront distribution, and
+  reserved concurrency 1.
+- No VPC: a Function URL stays public even when the function is in a VPC (VPC
+  config only changes outbound networking), so a VPC would add cost and cold-start
+  time without blocking any request. The function needs no network access.
+- Hero scene textures are WebP inside the Draco GLB, not KTX2.
 - AWS Budget at USD 10/month with email alert. Tags: Project=lazarus,
   Environment=demo, Owner=gtogbes, CostCenter=kiroween-2026.
-- Cost ceiling: 5 concurrent runs x 30 s x 1 GB is at most 150 GB-s per 30 s; a
-  realistic judging load (hundreds of runs) costs well under USD 1/month.
+- Cost ceiling: worst case is 1 concurrent run, busy all month: 1 x 1 GB x
+  2,592,000 s x USD 0.0000133334/GB-s (arm64) is about USD 34.56/month, plus
+  requests. This is above Requirement 8.4's USD 20; the owner accepted it on
+  task 22 (the budget alert at USD 10 is the backstop). A realistic judging load
+  (hundreds of runs) costs well under USD 1/month.
 
 **Deployment is high risk (infrastructure, public endpoint) and needs explicit
 approval from the owner before `cdk deploy`.** Always run `cdk diff` first.

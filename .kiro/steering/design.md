@@ -8,9 +8,9 @@ operating slab, arc lighting. Think film set, not Halloween clip art.
 ## 3D pipeline
 - Model and texture in Blender. Bake lighting and ambient occlusion into textures
   so the browser scene looks realistic without heavy real-time lighting.
-- Export GLB. Compress geometry with Draco or Meshopt and textures with KTX2
+- Export GLB. Compress geometry with Draco or Meshopt and textures with WebP
   (`gltf-transform`). Budget: hero scene under 8 MB total.
-- Render in the browser with React Three Fiber + drei. Use an HDRI environment,
+- Render in the browser with plain three.js (no React renderer; see LabScene.tsx). Use an HDRI environment,
   ACES Filmic tone mapping and light post-processing (bloom on arcs and CRT glow,
   subtle film grain). No heavy SSAO at runtime; it is baked.
 - Use Blender Cycles for pre-rendered shots in the demo video and README.

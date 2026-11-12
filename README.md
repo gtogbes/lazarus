@@ -21,6 +21,15 @@ matches GnuCOBOL 3.1.2 on 50,000 generated cases.
 | `PAYROLL` | Weekly gross-to-net pay with tax bands | COMP-3, ON SIZE ERROR, banker's rounding |
 | `INVOICE` | Invoice line with discount and VAT | Silent overflow, truncated discount, bad input codes |
 
+### The programs in plain English
+
+The same text appears on the morgue cards and the program pages. It comes from
+`src/ports/programs.meta.ts`, so update it there and here together.
+
+- **INTCALC.** Works out the interest a loan account earns over a number of days, and its new balance; overdrawn accounts pay 12.5 points more on the rate. COBOL rounds the interest half a cent away from zero, and an amount too big for its field silently loses its leading digits instead of failing. A port using floating point or ordinary rounding gets cents wrong, and cannot print the -0.00 that COBOL gives when a cut-off negative amount leaves zero. Two mutants: drop the rounding, or charge the penalty on a zero balance.
+- **PAYROLL.** Turns weekly hours and an hourly rate into gross pay, tax and net pay: hours over 40 pay time and a half, and tax is nil up to 1,000.00, 25% to 4,000.00 and 45% above. The working fields are packed decimal (COMP-3), so every step is exact decimal arithmetic, and tax rounds an exact half penny to the even penny where a naive port rounds it up. When gross pay is too big for its field, ON SIZE ERROR marks the record "SE" and leaves gross at zero; a naive port keeps the overflowed amount. Three mutants: normal rounding, ignoring the size error, and a tax band edge change that turns out to be equivalent.
+- **INVOICE.** Prices one invoice line: quantity times unit price, less a percentage discount, plus VAT at 17.5%, 5% or 0% by code. The discount is cut to the penny rather than rounded, VAT rounds an exact half penny to the even penny, and a line too big for its field silently loses its leading digits. An unknown VAT code is not rejected: it is charged no VAT and the record is marked "VC". Two mutants: round VAT halves up, or round the discount instead of cutting it.
+
 Each run writes `results/<PROGRAM>.json` (status, seed, counterexample) for the UI.
 
 ## Quick start
@@ -31,7 +40,23 @@ npm run cobol:image        # build the pinned GnuCOBOL 3.1.2 image (once)
 npm test                   # unit tests + equivalence tests (1,000 cases per program)
 LAZARUS_RUNS=50000 npm run test:equivalence   # longer soak
 LAZARUS_SEED=-1501918552 npm run test:equivalence   # replay a reported failure
+npm run lambda:image && npm run lambda:smoke   # proof API Lambda image, checked locally under the Lambda emulator
 ```
+
+## Run the lab locally
+
+Needs Docker running and the `lazarus-gnucobol:3.1.2` image (`npm run cobol:image`).
+Use two terminals, both in the repository root:
+
+```sh
+npm run api:dev   # terminal 1: proof API on http://127.0.0.1:8787 (runs GnuCOBOL in Docker)
+npm run web:dev   # terminal 2: lab UI on http://localhost:5173, proxies /api to the proof API
+```
+
+Open http://localhost:5173 and press **Prove it** on a program. If the proof
+API is not running, Prove fails with "The local proof API is not running".
+Set `LAZARUS_API_HOST` and `LAZARUS_API_PORT` in both terminals to move the API.
+If 5173 is taken, Vite moves to the next free port and prints it.
 
 ## How it works (planned)
 

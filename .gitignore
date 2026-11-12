@@ -2,6 +2,10 @@
 node_modules/
 dist/
 coverage/
+# Playwright output
+test-results/
+playwright-report/
+blob-report/
 *.tsbuildinfo
 
 # Compiled COBOL artefacts
@@ -14,6 +18,10 @@ cobol/bin/
 # Recorded results for the hosted demo will live elsewhere.
 results/
 
+# Blender intermediates (raw GLB, bake PNGs, full-size renders); regenerate with npm run art:lab
+art/lab/build/
+*.blend1
+
 # Local environment and secrets
 .env
 .env.*
@@ -23,3 +31,6 @@ results/
 .DS_Store
 
 # NOTE: never ignore .kiro/ - the hackathon rules require it in the repo.
+
+# Lab scene perf measurements (machine-specific); regenerate with npm run perf:scene -w web
+web/perf/results/
