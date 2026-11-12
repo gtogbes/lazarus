@@ -8,17 +8,40 @@
   "engines": {
     "node": ">=22"
   },
+  "workspaces": [
+    "web"
+  ],
   "scripts": {
     "cobol:image": "docker build -t lazarus-gnucobol:3.1.2 docker/gnucobol",
+    "lambda:image": "docker build --platform linux/arm64 -f docker/lambda/Dockerfile -t lazarus-proof-api:local .",
+    "lambda:smoke": "tsx scripts/lambda-smoke.ts",
+    "api:dev": "tsx src/api/dev-server.ts",
+    "record:proofs": "tsx scripts/record-proofs.ts",
+    "web:dev": "npm run dev -w web --",
+    "web:build": "npm run build -w web --",
+    "test:e2e": "npm run test:e2e -w web",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:unit": "vitest --run --exclude '**/*.equivalence.test.ts'",
-    "test:equivalence": "vitest --run src/ports"
+    "test:equivalence": "vitest --run src/ports",
+    "art:lab": "tsx art/lab/build.ts"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6",
-    "fast-check": "^4.10.2",
-    "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "@gltf-transform/cli": "4.5.1",
+    "@gltf-transform/core": "4.5.1",
+    "@gltf-transform/extensions": "4.5.1",
+    "@gltf-transform/functions": "4.5.1",
+    "@types/node": "26.6.6",
+    "draco3dgltf": "1.5.9",
+    "fast-check": "4.10.2",
+    "rolldown": "1.3.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "overrides": {
+    "@donmccurdy/caporal": {
+      "glob": "14.0.5"
+    }
   }
 }
