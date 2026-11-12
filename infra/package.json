@@ -1,0 +1,30 @@
+{
+  "name": "@lazarus/infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK app for the hosted reanimation lab: SiteStack (S3 + CloudFront) and ProofApiStack (Lambda).",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "synth": "cdk synth",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.276.0",
+    "cdk-nag": "3.0.2",
+    "constructs": "10.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "aws-cdk": "2.1148.1",
+    "fast-check": "4.10.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

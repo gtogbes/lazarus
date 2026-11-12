@@ -1,0 +1,6 @@
+**
+!package.json
+!package-lock.json
+!src/**
+!cobol/programs/**
+!spikes/lambda-streaming/handler.ts

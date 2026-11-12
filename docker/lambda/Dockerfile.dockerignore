@@ -1,0 +1,11 @@
+# Build context allowlist for docker/lambda/Dockerfile (used when built with -f from the repo root).
+# Everything else (node_modules, web/ sources, .env files, .git, results) stays out.
+**
+!package.json
+!package-lock.json
+!web/package.json
+!src/**
+src/**/*.test.ts
+!cobol/programs/*.cbl
+!docker/lambda/ric/package.json
+!docker/lambda/ric/package-lock.json

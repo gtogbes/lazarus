@@ -1,0 +1,4 @@
+# CDK synth output (includes the staged web build and Docker context)
+cdk.out/
+# Saved `cdk diff` output: contains the account id; review locally, do not commit
+cdk-diff*.txt
