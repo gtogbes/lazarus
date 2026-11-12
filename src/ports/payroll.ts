@@ -61,7 +61,7 @@ export function processRecord(record: string): string {
     gross = store(mul(money(hours), money(rate)), PICS.gross, { rounded: true }).scaled;
   }
 
-  // EVALUATE TRUE ... tax bands, ROUNDED MODE NEAREST-EVEN
+  // EVALUATE TRUE ... END-EVALUATE (tax bands, rounded to the nearest even penny)
   let tax: bigint;
   if (gross <= 100000n) {
     tax = 0n;

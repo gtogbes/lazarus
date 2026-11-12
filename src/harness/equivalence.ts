@@ -2,41 +2,23 @@ import fc from 'fast-check';
 import { GNUCOBOL_IMAGE, type CobolSession } from './cobol.js';
 import { compareOutputs, type Comparison } from './compare.js';
 
+import type { Counterexample, EquivalenceResult, Progress } from './equivalence.types.js';
+
+export type { Counterexample, EquivalenceResult, Progress } from './equivalence.types.js';
+
 export type Port = (record: string) => string;
-
-/** Live counters for the UI. `executions` includes shrinking attempts. */
-export interface Progress {
-  readonly executions: number;
-  readonly divergences: number;
-}
-
-export interface Counterexample {
-  readonly records: readonly string[];
-  readonly cobol: readonly string[];
-  readonly port: readonly string[];
-  /** 0-based record and column of the first difference. */
-  readonly line: number;
-  readonly column: number;
-}
-
-/** Written to results/<PROGRAM>.json for the UI (Requirement 5.2). */
-export interface EquivalenceResult {
-  readonly program: string;
-  readonly status: 'equivalent' | 'diverged';
-  readonly reference: string;
-  readonly generatedAt: string;
-  readonly seed: number;
-  /** Generated cases run, up to and including the first failure. */
-  readonly cases: number;
-  readonly shrinks: number;
-  readonly durationMs: number;
-  readonly counterexample?: Counterexample;
-}
 
 export interface EquivalenceOptions {
   readonly program: string;
-  readonly session: CobolSession;
+  readonly session: Pick<CobolSession, 'send'>;
   readonly port: Port;
+  /** Reference label written to the result. Defaults to the reference container image. */
+  readonly reference?: string;
+  /**
+   * Stops the run when aborted: no further cases start, an in-flight COBOL
+   * call is abandoned, and the result is flagged `truncated`.
+   */
+  readonly signal?: AbortSignal;
   /** Generator for one valid input record. */
   readonly record: fc.Arbitrary<string>;
   readonly numRuns?: number;
@@ -69,6 +51,16 @@ function envInt(name: string): number | undefined {
   return value;
 }
 
+const ABORTED = Symbol('aborted');
+/** Resolve with the promise's value, or with ABORTED as soon as the signal aborts. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T | typeof ABORTED> {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(ABORTED);
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
 function divergence(records: readonly string[], cobol: string[], port: string[], diff: Extract<Comparison, { equal: false }>) {
   return new DivergenceError({ records, cobol, port, line: diff.line, column: diff.column });
 }
@@ -80,6 +72,7 @@ function divergence(records: readonly string[], cobol: string[], port: string[],
  * Errors other than divergences (for example a crashed container) are rethrown.
  */
 export async function checkEquivalence(options: EquivalenceOptions): Promise<EquivalenceResult> {
+  const { signal } = options;
   const progress = { executions: 0, divergences: 0 };
   const numRuns = envInt('LAZARUS_RUNS') ?? options.numRuns ?? 1000;
   const seed = envInt('LAZARUS_SEED') ?? options.seed ?? Date.now() ^ (Math.random() * 0x100000000);
@@ -88,7 +81,10 @@ export async function checkEquivalence(options: EquivalenceOptions): Promise<Equ
   const property = fc.asyncProperty(
     fc.array(options.record, { minLength: 1, maxLength: options.maxRecords ?? 10 }),
     async (records) => {
-      const cobol = await options.session.send(records);
+      // PreconditionFailure(true) makes fast-check end the run as interrupted, not failed.
+      if (signal?.aborted) throw new fc.PreconditionFailure(true);
+      const cobol = await untilAborted(options.session.send(records), signal);
+      if (cobol === ABORTED) throw new fc.PreconditionFailure(true);
       const port = records.map(options.port);
       const diff = compareOutputs(cobol, port);
       progress.executions++;
@@ -101,14 +97,18 @@ export async function checkEquivalence(options: EquivalenceOptions): Promise<Equ
   const details = await fc.check(property, { numRuns, seed });
   const base = {
     program: options.program,
-    reference: GNUCOBOL_IMAGE,
+    reference: options.reference ?? GNUCOBOL_IMAGE,
     generatedAt: new Date().toISOString(),
     seed: details.seed,
     cases: details.numRuns,
     shrinks: details.numShrinks,
     durationMs: Math.round(performance.now() - started),
+    ...(details.interrupted ? { truncated: true as const } : {}),
   };
-  if (!details.failed) return { ...base, status: 'equivalent' };
+  // fast-check reports an interruption before the first success as a failure with no error.
+  if (!details.failed || (details.interrupted && details.errorInstance == null)) {
+    return { ...base, status: 'equivalent' };
+  }
   if (details.errorInstance instanceof DivergenceError) {
     return { ...base, status: 'diverged', counterexample: details.errorInstance.counterexample };
   }

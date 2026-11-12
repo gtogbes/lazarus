@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CompileError, compileCobol } from './cobol.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CobolSession, CompileError, compileCobol } from './cobol.js';
 
 const HELLO = [
   '       IDENTIFICATION DIVISION.',
@@ -61,5 +61,48 @@ describe('compileCobol', () => {
 
   it('reports a missing source file', () => {
     expect(() => compileCobol('NOPE', dir)).toThrow(/not found/);
+  });
+});
+
+describe('CobolSession native runner', () => {
+  // Shell scripts stand in for compiled binaries: same one-line-per-record contract.
+  function writeBinary(name: string, script: string): void {
+    mkdirSync(join(dir, 'bin'), { recursive: true });
+    writeFileSync(join(dir, 'bin', name), `#!/bin/sh\n${script}\n`, { mode: 0o755 });
+  }
+  const ECHO = 'while IFS= read -r line; do printf "%s!\\n" "$line"; done';
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('runs <binDir>/<program> directly and returns one line per record', async () => {
+    writeBinary('ECHO', ECHO);
+    const session = CobolSession.start('ECHO', { runner: 'native', binDir: join(dir, 'bin') });
+    expect(await session.send(['A 1', 'B 2'])).toEqual(['A 1!', 'B 2!']);
+    expect(await session.send(['C'])).toEqual(['C!']);
+    expect(await session.close()).toBe(0);
+  });
+
+  it('defaults binDir to LAZARUS_BIN_DIR', async () => {
+    writeBinary('ECHO', ECHO);
+    vi.stubEnv('LAZARUS_BIN_DIR', join(dir, 'bin'));
+    const session = CobolSession.start('ECHO', { runner: 'native' });
+    expect(await session.send(['X'])).toEqual(['X!']);
+    expect(await session.close()).toBe(0);
+  });
+
+  it('rejects pending sends when the program exits early', async () => {
+    writeBinary('CRASH', 'read -r line; echo "boom" >&2; exit 3');
+    const session = CobolSession.start('CRASH', { runner: 'native', binDir: join(dir, 'bin') });
+    await expect(session.send(['A'])).rejects.toThrow(/exited with code 3[\s\S]*boom/);
+    expect(await session.close()).toBe(3);
+  });
+
+  it('fails fast on a missing binary or an unsafe program name', () => {
+    expect(() => CobolSession.start('NOPE', { runner: 'native', binDir: join(dir, 'bin') })).toThrow(
+      /binary not found/,
+    );
+    expect(() => CobolSession.start('../ETC', { runner: 'native', binDir: dir })).toThrow(RangeError);
   });
 });

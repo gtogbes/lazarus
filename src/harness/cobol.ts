@@ -66,8 +66,22 @@ export function compileCobol(program: string, cobolDir: string = COBOL_DIR): 'co
   return 'compiled';
 }
 
+/** Where the GnuCOBOL binary runs: in the reference container, or directly on this host. */
+export type CobolRunner = 'docker' | 'native';
+
+/** Binary folder for the native runner in the Lambda image (ADR 0001). */
+export const DEFAULT_NATIVE_BIN_DIR = '/opt/lazarus/bin';
+
+export interface CobolSessionOptions {
+  /** `docker` (default): compile if needed and run in `lazarus-gnucobol`. `native`: run a prebuilt binary. */
+  readonly runner?: CobolRunner;
+  /** Native runner only. Defaults to `LAZARUS_BIN_DIR`, then `/opt/lazarus/bin`. */
+  readonly binDir?: string;
+}
+
 /**
- * A long-lived container running one compiled COBOL program.
+ * A long-lived process running one compiled COBOL program, either in the
+ * reference container or natively (inside an image with the same GnuCOBOL build).
  * The program must write exactly one output line per input record.
  */
 export class CobolSession {
@@ -78,9 +92,12 @@ export class CobolSession {
   private exited: Error | undefined;
   private readonly exitPromise: Promise<number | null>;
 
-  private constructor(readonly program: string) {
-    // stdbuf -oL makes GnuCOBOL flush after every record instead of at exit.
-    this.child = spawn('docker', dockerArgs(COBOL_DIR, 'stdbuf', '-oL', `bin/${program}`));
+  private constructor(
+    readonly program: string,
+    command: string,
+    args: readonly string[],
+  ) {
+    this.child = spawn(command, args);
     this.child.stderr.setEncoding('utf8').on('data', (chunk: string) => (this.stderr += chunk));
     createInterface({ input: this.child.stdout }).on('line', (line) => {
       const next = this.waiting.shift();
@@ -101,10 +118,20 @@ export class CobolSession {
     });
   }
 
-  /** Compile if needed and start a session. */
-  static start(program: string): CobolSession {
+  /**
+   * Start a session. The docker runner compiles if needed; the native runner
+   * expects `<binDir>/<program>` to exist already (the Lambda image is read-only).
+   */
+  static start(program: string, options: CobolSessionOptions = {}): CobolSession {
+    // stdbuf -oL makes GnuCOBOL flush after every record instead of at exit.
+    if (options.runner === 'native') {
+      assertProgramName(program);
+      const binary = join(options.binDir ?? process.env.LAZARUS_BIN_DIR ?? DEFAULT_NATIVE_BIN_DIR, program);
+      if (!existsSync(binary)) throw new Error(`COBOL binary not found: ${binary}`);
+      return new CobolSession(program, 'stdbuf', ['-oL', binary]);
+    }
     compileCobol(program);
-    return new CobolSession(program);
+    return new CobolSession(program, 'docker', dockerArgs(COBOL_DIR, 'stdbuf', '-oL', `bin/${program}`));
   }
 
   private nextLine(): Promise<string> {

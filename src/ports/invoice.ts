@@ -45,7 +45,7 @@ export function processRecord(record: string): string {
   // COMPUTE WS-NET = WS-LINE - WS-DISC
   const net = store(sub(amount(line), amount(disc)), PICS.amount).scaled;
 
-  // EVALUATE IN-VAT-CODE ... WHEN OTHER MOVE "VC" TO OUT-STATUS
+  // EVALUATE IN-VAT-CODE ... WHEN OTHER ... MOVE "VC" TO OUT-STATUS ... END-EVALUATE
   const vatRate = VAT_RATES[vatCode];
   const status = vatRate === undefined ? 'VC' : 'OK';
 
