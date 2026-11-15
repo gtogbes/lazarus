@@ -13,6 +13,7 @@
     "test": "vitest --run",
     "test:e2e": "playwright test",
     "test:e2e:csp": "playwright test -c e2e-csp/playwright.config.ts",
+    "video:capture": "node -e \"require('fs').existsSync('video/playwright.config.ts') || (console.error('video:capture needs web/video/, which is kept out of the repo. Nothing to run.'), process.exit(1))\" && tsc -p video/tsconfig.json && playwright test -c video/playwright.config.ts",
     "perf:scene": "playwright test -c perf/playwright.config.ts",
     "perf:lighthouse": "tsx perf/lighthouse.ts"
   },

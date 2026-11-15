@@ -34,3 +34,8 @@ art/lab/build/
 
 # Lab scene perf measurements (machine-specific); regenerate with npm run perf:scene -w web
 web/perf/results/
+# Video production files (capture script, shot list, narration, licences): kept local, never committed
+web/video/
+docs/demo/
+# Kiro task-run state (PBT results, timestamps); the spec .md files stay committed
+.kiro/specs/*/tasks.meta.json
