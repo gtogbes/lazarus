@@ -129,10 +129,18 @@ test.describe('program view', () => {
     await prove.getByRole('button', { name: 'Prove it' }).click();
     await expect(status).toHaveText('Reanimating…');
     await expect(prove.getByRole('button', { name: 'Cancel' })).toBeVisible();
-    await expectNoViolations(page, 'Prove running');
+    // graphical-proof: the vitals panel (heartbeat, case grid, resurrection fill) while running.
+    const vitals = page.getByTestId('vitals-panel');
+    await expect(vitals).toHaveAttribute('data-status', 'reanimating');
+    await expectNoViolations(page, 'Prove running, with the vitals');
     release();
     await expect(status).toHaveText('Alive', { timeout: PROOF_TIMEOUT });
-    await expectNoViolations(page, 'Alive');
+    await expect(vitals).toHaveAttribute('data-status', 'alive');
+    await expect(page.getByTestId('heartbeat-label')).toContainText('✓');
+    // The Visuals draw only while in view (Requirement 15.4), so bring the fill into view first.
+    await page.getByTestId('resurrection-fill').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('resurrection-fill')).toHaveAttribute('data-demo-beat', 'all-passed');
+    await expectNoViolations(page, 'Alive, with the vitals');
   });
 
   test('sabotage selected with the diff, then Relapsed with the counterexample', async ({ page }) => {
@@ -145,8 +153,26 @@ test.describe('program view', () => {
     await expect(status).toHaveText('Relapsed', { timeout: PROOF_TIMEOUT });
     const card = page.getByRole('region', { name: 'Counterexample' });
     await expect(card).toBeVisible();
-    await card.getByText('Raw records').click(); // open the <details> too
+    // Mid-playback: the shrink stage is animating (its Pause control shows) beside the
+    // Autopsy and the Digit inspector; the vitals show the flatline and the failed case.
+    const viewer = card.getByTestId('shrink-viewer');
+    await expect(viewer.getByTestId('shrink-stage')).toBeVisible();
+    await expect(viewer.getByTestId('shrink-controls').getByRole('button', { name: 'Pause' })).toBeVisible();
+    await expect(card.getByTestId('autopsy')).toBeVisible();
+    await expect(card.getByTestId('digit-inspector')).toBeVisible();
+    await expect(page.getByTestId('vitals-panel')).toHaveAttribute('data-status', 'relapsed');
+    await expect(page.getByTestId('heartbeat')).toHaveAttribute('data-mode', 'flatline');
+    await expectNoViolations(page, 'Relapsed, shrink viewer mid-playback');
+    await card.getByText('Records field by field').click(); // open both <details> too
+    await card.getByText('Raw records').click();
     await expectNoViolations(page, 'Relapsed with the counterexample card');
+    // The Revive button, then the run it starts ends Alive (with the shock pulse).
+    const revive = prove.getByRole('button', { name: 'Revive' });
+    await expect(revive).toBeVisible();
+    await revive.click();
+    await expect(status).toHaveText('Alive', { timeout: PROOF_TIMEOUT });
+    await expect(revive).toHaveCount(0);
+    await expectNoViolations(page, 'Alive after Revive');
   });
 
   test('error with the recorded-fallback offer, then a recorded replay', async ({ page }) => {
@@ -161,5 +187,89 @@ test.describe('program view', () => {
     await expect(status).toHaveText('Alive');
     await expect(prove.getByTestId('proof-recorded')).toContainText('A replay of a proof recorded on');
     await expectNoViolations(page, 'recorded replay');
+  });
+});
+
+/** graphical-proof Requirement 14.7: axe on the new states (stitches, reduced-motion visuals, Demo_Mode). */
+test.describe('graphical proof', () => {
+  /** Shown once the overlay has drawn the stitch (it starts as `display: none`). */
+  const stitchDrawn = (page: Page, kind: 'field' | 'link') =>
+    expect.poll(() => page.locator(`[data-stitch="${kind}"]`).evaluate((g) => getComputedStyle(g).display)).not.toBe('none');
+  test('field stitches with a field active, side by side', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openPayroll(page);
+    const option = page.getByRole('listbox', { name: 'Fields' }).locator('[data-field-option="IN-HOURS"]');
+    await option.click();
+    await expect(option).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('field-details')).toContainText('IN-HOURS');
+    await stitchDrawn(page, 'field');
+    await expectNoViolations(page, 'field stitches, side by side, IN-HOURS active');
+  });
+  test('field stitches with a field active, stacked', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openPayroll(page);
+    const option = page.getByRole('listbox', { name: 'Fields' }).locator('[data-field-option="OUT-TAX"]');
+    await option.click();
+    await expect(option).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('button', { name: 'Show in port' })).toBeVisible();
+    await expectNoViolations(page, 'field stitches, stacked, OUT-TAX active');
+  });
+  test('the statement-link stitch', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openPayroll(page);
+    await page.locator('[data-link]').first().focus();
+    await expect(page.getByTestId('link-caption')).toContainText('highlighted for port');
+    await stitchDrawn(page, 'link');
+    await expectNoViolations(page, 'statement-link stitch');
+  });
+  test.describe('reduced motion', () => {
+    test.use({ reducedMotion: 'reduce' });
+    test('vitals, counterexample and Revived ✓ in their static forms', async ({ page }) => {
+      const { prove, status } = await openPayroll(page);
+      await page.getByRole('region', { name: 'Sabotage the port' }).getByRole('radio', { name: halfUpTax.title }).check();
+      await prove.getByRole('button', { name: 'Prove it' }).click();
+      await expect(status).toHaveText('Relapsed', { timeout: PROOF_TIMEOUT });
+      await expect(page.getByTestId('heartbeat')).toHaveAttribute('data-motion', 'reduced');
+      await expect(page.getByTestId('case-grid')).toHaveAttribute('data-motion', 'reduced');
+      const viewer = page.getByTestId('shrink-viewer');
+      await expect(viewer.getByTestId('shrink-stage')).toHaveCount(0);
+      await expect(viewer.getByTestId('shrink-list')).not.toHaveClass(/sr-only/);
+      await expectNoViolations(page, 'Relapsed, reduced motion');
+      await prove.getByRole('button', { name: 'Revive' }).click();
+      await expect(status).toHaveText('Alive', { timeout: PROOF_TIMEOUT });
+      await expect(page.getByTestId('resurrection-fill-revived')).toHaveText('Revived ✓');
+      await expectNoViolations(page, 'Revived ✓, reduced motion');
+    });
+  });
+  test.describe('demo mode', () => {
+    test.beforeEach(async ({ context }) => {
+      // Demo_Mode never calls the Proof_API (Requirement 11.3).
+      await context.route(/\/api\//, (route) => route.abort('blockedbyclient'));
+    });
+    test('the bar during a replay, then paused', async ({ page }) => {
+      await page.goto('/program/PAYROLL?demo=1');
+      const bar = page.getByTestId('demo-bar');
+      await expect(bar).toHaveAttribute('data-demo-step', 'program', { timeout: 15_000 });
+      const skip = bar.getByRole('button', { name: 'Skip step' });
+      await skip.click();
+      await skip.click();
+      await expect(bar).toHaveAttribute('data-demo-step', 'prove-real');
+      await expect(page.getByTestId('heartbeat')).toHaveAttribute('data-demo-beat', 'heartbeat');
+      await expectNoViolations(page, 'demo bar, prove-real replay');
+      await bar.getByRole('button', { name: 'Pause' }).click();
+      await expect(bar).toHaveAttribute('data-demo-state', 'paused');
+      await expectNoViolations(page, 'demo bar, paused');
+    });
+    test('the error state', async ({ page }) => {
+      await page.route('**/recorded/PAYROLL.half-up-tax.json', (route) => route.fulfill({ status: 404, body: 'not found' }));
+      await page.goto('/program/PAYROLL?demo=1');
+      const bar = page.getByTestId('demo-bar');
+      await expect(bar).toHaveAttribute('data-demo-state', 'error', { timeout: 15_000 });
+      await expect(bar.getByTestId('demo-caption')).toHaveText(
+        'The demo stopped: the recording recorded/PAYROLL.half-up-tax.json is missing or invalid.',
+      );
+      await expect(bar.getByRole('button', { name: 'Exit demo' })).toBeVisible();
+      await expectNoViolations(page, 'demo bar, error');
+    });
   });
 });

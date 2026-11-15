@@ -261,7 +261,17 @@ test.describe('full UI', () => {
       await expect(summary).toContainText(/Reference\s*lazarus-gnucobol:3\.1\.2/);
       await expect(layer(page)).toHaveAttribute('data-mood', 'alive');
       expect(await moods(page)).toEqual(['buried', 'reanimating', 'alive']);
+      // graphical-proof vitals: steady heartbeat, a full case grid and a full resurrection fill.
+      const vitals = page.getByTestId('vitals-panel');
+      await expect(vitals).toHaveAttribute('data-status', 'alive');
+      // The Visuals draw only while in view (Requirement 15.4), so bring them into view first.
+      await vitals.scrollIntoViewIfNeeded();
+      await expect(page.getByTestId('heartbeat')).toHaveAttribute('data-mode', 'steady');
+      await expect(page.getByTestId('heartbeat-label')).toHaveText(/^✓ [\d,]+ \/ [\d,]+ matched$/);
+      await expect(page.getByTestId('case-grid')).toHaveAttribute('data-demo-beat', 'grid-alive');
+      await expect(page.getByTestId('resurrection-fill')).toHaveAttribute('data-demo-beat', 'all-passed');
       await expectReadableOverScene(page, `${program.id} Alive`);
+      let revived = false;
 
       for (const mutant of program.mutants) {
         await sabotage.getByRole('radio', { name: new RegExp(`^${escapeRegExp(mutant.title)}`) }).check();
@@ -281,14 +291,36 @@ test.describe('full UI', () => {
         await expect(layer(page)).toHaveAttribute('data-mood', 'relapsed');
         const card = page.getByRole('region', { name: 'Counterexample' });
         await expect(card).toBeVisible();
+        await expect(card.getByRole('region', { name: 'Autopsy' })).toContainText('first differs in');
+        await card.getByText('Records field by field').click();
         const input = card.getByRole('table', { name: /^Input record/ });
         await expect(input.getByRole('rowheader').first()).toBeVisible();
         const output = card.getByRole('table', { name: /^Output record/ });
         expect(await output.getByRole('row').filter({ hasText: 'Differs' }).count(), mutant.id).toBeGreaterThanOrEqual(1);
         await expect(card).toContainText(`Sabotage: ${mutant.title}`);
         await expect(card).toContainText(mutant.explanation);
+        // graphical-proof: the flatline, the failed case on the grid, the Digit inspector
+        // (or why it has nothing to show) and the Shrink viewer.
+        await expect(vitals).toHaveAttribute('data-status', 'relapsed');
+        await vitals.scrollIntoViewIfNeeded();
+        await expect(page.getByTestId('heartbeat')).toHaveAttribute('data-mode', 'flatline');
+        await expect(page.getByTestId('heartbeat-label')).toContainText('✗');
+        await expect(page.getByTestId('case-grid')).toHaveAttribute('data-status', 'relapsed');
+        await expect(card.getByTestId('digit-inspector')).toBeVisible();
+        await expect(card.getByTestId('digit-table').or(card.getByTestId('digit-none'))).toBeVisible();
+        await expect(card.getByTestId('shrink-viewer')).toBeVisible();
         if (mutant === program.mutants.find((m) => m.equivalent === undefined)) {
           await expectReadableOverScene(page, `${program.id} Relapsed`);
+        }
+        // Revive once per program: the real port is restored and proven Alive again.
+        if (!revived) {
+          revived = true;
+          await prove.getByRole('button', { name: 'Revive' }).click();
+          await expect(status).toHaveText(/^Alive/, { timeout: PROOF_TIMEOUT });
+          await expect(sabotage.getByRole('radio', { name: /^No sabotage/ })).toBeChecked();
+          await expect(prove.getByRole('button', { name: 'Revive' })).toHaveCount(0);
+          await expect(layer(page)).toHaveAttribute('data-mood', 'alive');
+          await expect(vitals).toHaveAttribute('data-status', 'alive');
         }
       }
       const seen = await moods(page);
@@ -377,6 +409,22 @@ test.describe('full UI', () => {
       // The fixed layer still covers the screen when the long page is scrolled.
       await page.mouse.wheel(0, 2000);
       await expectFillsViewport(page, 'canvas');
+      // graphical-proof on a phone: a field stitch, the stacked vitals and the counterexample
+      // visuals (Autopsy, Digit inspector, Shrink viewer) fit without sideways scroll.
+      await page.locator('[data-field-option="OUT-TAX"]').click();
+      await expect(page.getByRole('button', { name: 'Show in port' })).toBeVisible();
+      await noSidewaysScroll('program, field active');
+      const sabotage = page.getByRole('region', { name: 'Sabotage the port' });
+      const firstRelapsing = PROGRAMS.find((p) => p.id === 'PAYROLL')?.mutants.find((m) => m.equivalent === undefined);
+      if (!firstRelapsing) throw new Error('PAYROLL has no relapsing mutant');
+      await sabotage.getByRole('radio', { name: new RegExp(`^${escapeRegExp(firstRelapsing.title)}`) }).check();
+      const prove = page.getByRole('region', { name: 'Prove it' });
+      await prove.getByRole('button', { name: 'Prove it' }).click();
+      await expect(prove.getByTestId('proof-status')).toHaveText('Relapsed', { timeout: PROOF_TIMEOUT });
+      await expect(page.getByTestId('vitals-panel')).toBeVisible();
+      await expect(page.getByTestId('digit-inspector')).toBeVisible();
+      await expect(page.getByTestId('shrink-viewer')).toBeVisible();
+      await noSidewaysScroll('program, Relapsed with the counterexample');
       expect(watch.errors).toEqual([]);
     });
   });

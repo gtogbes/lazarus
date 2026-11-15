@@ -48,6 +48,10 @@ test('PAYROLL: prove the port, sabotage it, and read the counterexample', async 
   // Requirement 5.1, 5.2: decoded input and output records, at least one field marked as differing.
   const card = page.getByRole('region', { name: 'Counterexample' });
   await expect(card).toBeVisible();
+  // Requirement 9.1, 9.2: the Autopsy marks the differing columns in text; the tables are folded below it.
+  await expect(card.getByTestId('autopsy-columns')).toContainText('column 25');
+  await expect(card.getByTestId('autopsy-fields')).toContainText('OUT-TAX first differs in the decimal places');
+  await card.getByText('Records field by field').click();
   const input = card.getByRole('table', { name: /^Input record/ });
   await expect(input.getByRole('rowheader', { name: 'IN-EMP-ID' })).toBeVisible();
   await expect(input.getByRole('rowheader', { name: 'IN-RATE' })).toBeVisible();

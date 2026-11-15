@@ -145,4 +145,51 @@ test('happy path by keyboard: morgue, PAYROLL, Prove, sabotage, Prove, counterex
     seen.add(f.key);
   }
   expect(seen.size).toBeGreaterThan(10);
+  // graphical-proof: the Digit inspector's field radios, back from Copy command. The
+  // first input before it is the inspector's checked radio (it sits after the sabotage panel).
+  const inspector = card.getByTestId('digit-inspector');
+  const inspectorRadios = inspector.getByRole('radio');
+  await tabTo(page, (f) => f.tag === 'input', { back: true });
+  await expect(inspectorRadios.first()).toBeFocused();
+  if ((await inspectorRadios.count()) > 1) {
+    await page.keyboard.press('ArrowRight');
+    expect((await focused(page)).indicator).not.toBeNull();
+    await expect(inspectorRadios.nth(1)).toBeChecked();
+    await expect(inspector.getByTestId('digit-table')).toBeVisible();
+  }
+  // Revive by keyboard: the real port is proven again, and focus stays on Prove.
+  await tabTo(page, named('Revive'), { back: true });
+  await page.keyboard.press('Enter');
+  await expect(status).toHaveText('Alive', { timeout: PROOF_TIMEOUT });
+  await expect(provePanel.getByRole('button', { name: 'Prove again' })).toBeFocused();
+  await expect(provePanel.getByRole('button', { name: 'Revive' })).toHaveCount(0);
+});
+test('field stitches by keyboard: one Tab stop, arrows move, Enter shows, Escape clears', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/program/PAYROLL');
+  await expect(page.getByRole('heading', { level: 1, name: 'PAYROLL' })).toBeVisible();
+  const options = page.getByRole('listbox', { name: 'Fields' }).getByRole('option');
+  const first = await options.first().getAttribute('data-field-option');
+  const second = await options.nth(1).getAttribute('data-field-option');
+  if (!first || !second) throw new Error('PAYROLL has fewer than two field options');
+  // The selected option also shows an aria-hidden "▸", which innerText includes.
+  await tabTo(page, named(new RegExp(`${first}$`)));
+  await expect(options.first()).toBeFocused();
+  await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+  const details = page.getByTestId('field-details');
+  await expect(details).toContainText(first);
+  await page.keyboard.press('ArrowRight');
+  await expect(options.nth(1)).toBeFocused();
+  expect((await focused(page)).indicator).not.toBeNull();
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(details).toContainText(second);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('link-caption')).toContainText(`${second}: PIC`);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
+  await expect(details).toContainText('Choose a field');
+  // One Tab stop: the next Tab leaves the listbox.
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('role'))).not.toBe('option');
+  expect((await focused(page)).indicator).not.toBeNull();
 });

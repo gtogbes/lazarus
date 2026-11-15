@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { MUTANTS } from '../../src/ports/payroll.mutants';
 
 /**
  * Task 23, Requirement 9.2, in a real browser: status changes are announced through a
@@ -10,6 +11,8 @@ const PROOF_TIMEOUT = 60_000;
 const INTERVAL_MS = 5000; // PROGRESS_ANNOUNCE_INTERVAL_MS in ProofAnnouncer.tsx
 /** Timer jitter allowance when checking the 5 s spacing. */
 const SLACK_MS = 150;
+const halfUpTax = MUTANTS.find((m) => m.id === 'half-up-tax');
+if (!halfUpTax) throw new Error('PAYROLL mutant half-up-tax not found');
 
 interface Announcement {
   readonly t: number;
@@ -111,4 +114,78 @@ test('progress is announced at most once every 5 s while the counters update at 
     previous = p.t;
   }
   expect(log.at(-1)?.text).toMatch(/^PAYROLL is alive: /);
+});
+
+/**
+ * graphical-proof Requirement 14.6: the Visuals and Demo_Mode add no live region. The
+ * page keeps the proof announcer, plus the Copy command status inside the counterexample
+ * card (reanimation-lab, unchanged).
+ */
+async function liveRegions(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [
+      ...document.querySelectorAll(
+        '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], [role="marquee"], [role="timer"], output',
+      ),
+    ]
+      .map((el) => el.getAttribute('data-testid') ?? `<${el.tagName.toLowerCase()} ${el.outerHTML.slice(0, 80)}>`)
+      .sort(),
+  );
+}
+test('the new visuals add no live region: running, Relapsed with the card, Alive after Revive', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const { prove, status } = await openPayroll(page);
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/prove', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByRole('region', { name: 'Sabotage the port' }).getByRole('radio', { name: halfUpTax.title }).check();
+  await prove.getByRole('button', { name: 'Prove it' }).click();
+  await expect(page.getByTestId('vitals-panel')).toBeVisible();
+  expect(await liveRegions(page), 'running').toEqual(['proof-announcer']);
+  release();
+  await expect(status).toHaveText('Relapsed', { timeout: PROOF_TIMEOUT });
+  await expect(page.getByTestId('counterexample-card')).toBeVisible();
+  await expect(page.getByTestId('shrink-viewer')).toBeVisible();
+  expect(await liveRegions(page), 'Relapsed').toEqual(['copy-status', 'proof-announcer']);
+  await prove.getByRole('button', { name: 'Revive' }).click();
+  await expect(status).toHaveText('Alive', { timeout: PROOF_TIMEOUT });
+  await expect(page.getByTestId('resurrection-fill-revived')).toBeVisible();
+  expect(await liveRegions(page), 'Alive after Revive').toEqual(['proof-announcer']);
+});
+test('demo replays use the same polite region, and progress is announced at most once every 5 s', async ({ page, context }, testInfo) => {
+  test.setTimeout(120_000);
+  // The still, not the WebGL scene (see above); Demo_Mode never calls the Proof_API.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await context.route(/\/api\//, (route) => route.abort('blockedbyclient'));
+  const announcements = await recordAnnouncements(page);
+  await page.goto('/program/PAYROLL?demo=1');
+  const bar = page.getByTestId('demo-bar');
+  const status = page.getByRole('region', { name: 'Prove it' }).getByTestId('proof-status');
+  await expect(bar).toHaveAttribute('data-demo-step', 'program', { timeout: 15_000 });
+  expect(await liveRegions(page), 'demo bar shown').toEqual(['proof-announcer']);
+  const skip = bar.getByRole('button', { name: 'Skip step' });
+  await skip.click();
+  await skip.click();
+  await expect(bar).toHaveAttribute('data-demo-step', 'prove-real');
+  const caption = (await bar.getByTestId('demo-caption').textContent()) ?? '';
+  expect(await liveRegions(page), 'demo replay').toEqual(['proof-announcer']);
+  // The replay runs at 1/40 speed, so it shows progress for well over 5 s.
+  await expect(status).toHaveText('Alive', { timeout: 60_000 });
+  const log = await announcements();
+  testInfo.annotations.push({ type: 'announcements', description: log.map((a) => `${Math.round(a.t)} ms: ${a.text}`).join(' | ') });
+  const stepStart = log.findLast((a) => a.text === caption);
+  expect(stepStart, `the prove-real caption is announced: ${JSON.stringify(log)}`).toBeDefined();
+  const progress = log.filter((a) => a.t > (stepStart?.t ?? 0) && / cases? run, .* seconds elapsed\.$/.test(a.text));
+  expect(progress.length, JSON.stringify(log)).toBeGreaterThanOrEqual(1);
+  let previous = stepStart?.t ?? 0;
+  for (const p of progress) {
+    expect(p.t - previous, JSON.stringify(log)).toBeGreaterThanOrEqual(INTERVAL_MS - SLACK_MS);
+    previous = p.t;
+  }
+  expect(log.at(-1)?.text).toMatch(/^Recorded proof: PAYROLL is alive: /);
 });

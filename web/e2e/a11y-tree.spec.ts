@@ -91,27 +91,39 @@ test('program view: Prove panel, sabotage radio group, code regions; then the co
 
   await page.getByRole('button', { name: 'Prove it', exact: true }).click();
   await expect(page.getByTestId('proof-status')).toHaveText('Relapsed', { timeout: 60_000 });
-  await expect(page.getByRole('region', { name: 'Counterexample' })).toMatchAriaSnapshot(`
+  const card = page.getByRole('region', { name: 'Counterexample' });
+  await card.getByText('Records field by field').click();
+  await expect(card).toMatchAriaSnapshot(`
     - heading "Counterexample" [level=2]
-    - region "Input record":
-      - table /^Input record/:
-        - rowgroup:
-          - row:
-            - columnheader "Field"
-            - columnheader "PIC"
-            - columnheader "Value"
-        - rowgroup:
-          - row:
-            - rowheader "IN-EMP-ID"
-    - region "Output records":
-      - table /^Output record .*COBOL against the port/:
-        - rowgroup:
-          - row:
-            - columnheader "Field"
-            - columnheader "COBOL"
-            - columnheader "Port"
-            - columnheader "Match"
-    - heading "Why it diverged" [level=3]
+    - region "Autopsy":
+      - heading "Autopsy" [level=3]
+      - paragraph: /^Record \\d+ of \\d+ is the first that differs/
+      - region "COBOL and port output, character by character"
+      - paragraph: /characters? differs?:/
+      - list:
+        - listitem:
+          - code: OUT-TAX
+          - text: /^first differs in the decimal places/
+      - heading "Why it diverged" [level=3]
+    - group:
+      - region "Input record":
+        - table /^Input record/:
+          - rowgroup:
+            - row:
+              - columnheader "Field"
+              - columnheader "PIC"
+              - columnheader "Value"
+          - rowgroup:
+            - row:
+              - rowheader "IN-EMP-ID"
+      - region "Output records":
+        - table /^Output record .*COBOL against the port/:
+          - rowgroup:
+            - row:
+              - columnheader "Field"
+              - columnheader "COBOL"
+              - columnheader "Port"
+              - columnheader "Match"
     - heading "Replay it locally" [level=3]
     - region "Replay command"
     - button "Copy command"
