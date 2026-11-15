@@ -14,6 +14,7 @@
 import { randomInt } from 'node:crypto';
 import { CobolSession, GNUCOBOL_IMAGE, type CobolSessionOptions } from '../harness/cobol.js';
 import { checkEquivalence, type EquivalenceResult, type Progress } from '../harness/equivalence.js';
+import { INITIAL_PROGRESS } from '../harness/progress.js';
 import { findMutant, findProgram, type Program } from '../ports/registry.js';
 import type { Mutant } from '../ports/mutant.js';
 
@@ -24,7 +25,7 @@ export const PROVE_PATH = '/api/prove';
 export const PROVE_NUM_RUNS = 2000;
 /** Wall-clock cap per proof (Requirement 3.6). The Lambda timeout is 30 s. */
 export const PROVE_TIME_LIMIT_MS = 25_000;
-/** 4 Hz progress (Requirement 3.2). */
+/** 4 Hz progress (Requirement 3.2). The default `ProveOptions.progressIntervalMs`. */
 export const PROGRESS_INTERVAL_MS = 250;
 /** Largest accepted request body, in UTF-8 bytes. */
 export const MAX_BODY_BYTES = 1024;
@@ -49,9 +50,16 @@ export type ParseResult =
   | { readonly ok: true; readonly request: ProveRequest }
   | { readonly ok: false; readonly status: 400; readonly message: string };
 
-import type { ProveEvent } from './events.js';
+import type { ProveEvent, ProveProgressEvent } from './events.js';
 
-export type { ProveErrorBody, ProveEvent, ProveRequestBody } from './events.js';
+export type {
+  ProgressEvent,
+  ProofPhase,
+  ProveErrorBody,
+  ProveEvent,
+  ProveProgressEvent,
+  ProveRequestBody,
+} from './events.js';
 
 /** What happened, for the transport's logs. `error` is never sent to the client. */
 export type ProveOutcome =
@@ -69,6 +77,13 @@ export interface ProveOptions {
   readonly reference?: string;
   /** Test seam. Defaults to `CobolSession.start`. */
   readonly startSession?: (program: string, options: CobolSessionOptions) => ProveSession;
+  /**
+   * Milliseconds between `progress` events. Defaults to `PROGRESS_INTERVAL_MS`
+   * (4 Hz). Set only by in-process callers such as `scripts/record-proofs.ts`:
+   * no transport reads it from a request, and `parseProveRequest` rejects
+   * unknown keys.
+   */
+  readonly progressIntervalMs?: number;
 }
 
 /** Message sent to the client when the run fails. Details stay in server logs. */
@@ -141,7 +156,17 @@ export async function prove(
     stop.abort();
   }, PROVE_TIME_LIMIT_MS);
 
-  let latest: Progress = { executions: 0, divergences: 0 };
+  let latest: Progress = INITIAL_PROGRESS;
+  // Explicit fields, so the wire shape stays typed if Progress gains more.
+  const progressEvent = (): ProveProgressEvent => ({
+    type: 'progress',
+    executions: latest.executions,
+    divergences: latest.divergences,
+    cases: latest.cases,
+    phase: latest.phase,
+    elapsedMs: elapsedMs(),
+  });
+  const intervalMs = options.progressIntervalMs ?? PROGRESS_INTERVAL_MS;
   let ticker: ReturnType<typeof setInterval> | undefined;
   let session: ProveSession | undefined;
   try {
@@ -155,7 +180,7 @@ export async function prove(
       reference,
       numRuns: PROVE_NUM_RUNS,
     });
-    ticker = setInterval(() => emit({ type: 'progress', ...latest, elapsedMs: elapsedMs() }), PROGRESS_INTERVAL_MS);
+    ticker = setInterval(() => emit(progressEvent()), intervalMs);
 
     const result = await checkEquivalence({
       program: program.id,
@@ -170,7 +195,7 @@ export async function prove(
     });
     clearInterval(ticker);
     if (signal.aborted && !timedOut) return { status: 'cancelled' };
-    emit({ type: 'progress', ...latest, elapsedMs: elapsedMs() });
+    emit(progressEvent());
     emit({ type: 'result', result });
     return { status: result.truncated ? 'truncated' : 'completed', result };
   } catch (error) {

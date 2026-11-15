@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { validateShrinkPath } from '../harness/shrinkPath.js';
 import { findMutant, findProgram, type Program } from '../ports/registry.js';
 import {
   MAX_BODY_BYTES,
@@ -55,6 +56,28 @@ function run(request: ProveRequest, session: ProveSession, options: ProveOptions
 const ofType = <T extends ProveEvent['type']>(events: ProveEvent[], type: T) =>
   events.filter((e): e is Extract<ProveEvent, { type: T }> => e.type === type);
 
+/**
+ * Every progress event carries `cases` and `phase` (graphical-proof
+ * Requirement 1.4) with values a client accepts (Requirement 1.7).
+ */
+function expectProgressFields(events: ProveEvent[]) {
+  const progress = ofType(events, 'progress');
+  expect(progress.length).toBeGreaterThan(0);
+  let previous: (typeof progress)[number] | undefined;
+  for (const p of progress) {
+    expect(Number.isInteger(p.cases)).toBe(true);
+    expect(p.cases).toBeGreaterThanOrEqual(0);
+    expect(p.cases).toBeLessThanOrEqual(Math.min(p.executions, PROVE_NUM_RUNS));
+    expect(['generating', 'shrinking']).toContain(p.phase);
+    if (previous) {
+      expect(p.cases).toBeGreaterThanOrEqual(previous.cases!);
+      if (previous.phase === 'shrinking') expect(p.phase).toBe('shrinking');
+    }
+    previous = p;
+  }
+  return progress;
+}
+
 beforeEach(() => {
   // The harness honours these overrides; keep them out of unit tests.
   vi.stubEnv('LAZARUS_RUNS', '');
@@ -96,6 +119,7 @@ describe('parseProveRequest', () => {
     ['string seed', '{"program":"PAYROLL","seed":"1"}'],
     ['seed above int32', '{"program":"PAYROLL","seed":2147483648}'],
     ['client-chosen case count', '{"program":"PAYROLL","numRuns":100000}'],
+    ['client-chosen progress interval', '{"program":"PAYROLL","progressIntervalMs":1}'],
     ['prototype key', '{"program":"PAYROLL","__proto__":{"x":1}}'],
     ['body over 1 KB', JSON.stringify({ program: 'PAYROLL', pad: 'x'.repeat(MAX_BODY_BYTES) })],
   ])('rejects %s with 400', (_name, body) => {
@@ -133,6 +157,8 @@ describe('prove', () => {
       result: { status: 'equivalent', cases: PROVE_NUM_RUNS, seed: 42, reference: REFERENCE_LABELS.native },
     });
     expect(last?.type === 'result' && 'truncated' in last.result).toBe(false);
+    expect(last?.type === 'result' && 'shrinkPath' in last.result).toBe(false);
+    expect(expectProgressFields(events).at(-1)).toMatchObject({ cases: PROVE_NUM_RUNS, phase: 'generating' });
     expect(session.closed).toBe(true);
   });
 
@@ -143,7 +169,16 @@ describe('prove', () => {
 
     expect(await outcome).toMatchObject({ status: 'completed', result: { status: 'diverged' } });
     expect(events[0]).toMatchObject({ type: 'started', mutant: 'half-up-tax' });
-    expect(ofType(events, 'result')[0]?.result.counterexample).toBeDefined();
+    const result = ofType(events, 'result')[0]?.result;
+    expect(result?.counterexample).toBeDefined();
+    // The final progress is sent after shrinking and agrees with the result (Requirement 1.5).
+    const finalProgress = expectProgressFields(events).at(-1);
+    expect(events.at(-2)).toBe(finalProgress);
+    expect(finalProgress).toMatchObject({ phase: 'shrinking', cases: result?.cases });
+    expect(finalProgress?.divergences).toBe((result?.shrinks ?? -1) + 1);
+    // The Shrink_Path travels inside the result event (Requirement 2.7).
+    expect(result?.shrinkPath).toBeDefined();
+    expect(validateShrinkPath(result?.shrinkPath, result!)).toEqual([]);
   });
 
   it('emits progress every 250 ms while running (4 Hz)', async () => {
@@ -158,7 +193,24 @@ describe('prove', () => {
     expect(executions).toEqual([...executions].sort((a, b) => a - b));
     expect(executions[0]).toBeGreaterThan(0);
     expect(PROGRESS_INTERVAL_MS).toBe(250);
+    // The default ticker sends the new fields too.
+    for (const p of expectProgressFields(events)) expect(p).toMatchObject({ cases: p.executions, phase: 'generating' });
 
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(await outcome).toEqual({ status: 'cancelled' });
+  });
+
+  it('uses progressIntervalMs when given and sends cases and phase', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
+    const payroll = program('PAYROLL');
+    const { events, controller, outcome } = run({ program: payroll, seed: 1 }, fakeSession(payroll, 5), {
+      progressIntervalMs: 100,
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    const progress = ofType(events, 'progress');
+    expect(progress.map((p) => p.elapsedMs)).toEqual([100, 200, 300]);
+    for (const p of progress) expect(p).toMatchObject({ cases: p.executions, phase: 'generating' });
     controller.abort();
     await vi.advanceTimersByTimeAsync(10);
     expect(await outcome).toEqual({ status: 'cancelled' });
@@ -177,8 +229,40 @@ describe('prove', () => {
     const cases = result.status === 'truncated' ? result.result.cases : -1;
     expect(cases).toBeGreaterThan(1000);
     expect(cases).toBeLessThan(PROVE_NUM_RUNS);
-    expect(events.at(-2)).toMatchObject({ type: 'progress', executions: cases });
+    expect(events.at(-2)).toMatchObject({ type: 'progress', executions: cases, cases, phase: 'generating' });
     expect(events.at(-1)).toMatchObject({ type: 'result', result: { cases, truncated: true } });
+    expectProgressFields(events);
+    expect(session.closed).toBe(true);
+  });
+
+  it('stops mid-shrink at 25 s and attaches the Shrink_Path reached so far', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
+    const payroll = program('PAYROLL');
+    const mutant = findMutant(payroll, 'half-up-tax');
+    if (!mutant) throw new Error('missing half-up-tax');
+    // Fast until the mutant first diverges, then 2 s per COBOL call, so shrinking outlives the cap.
+    let diverged = false;
+    const session = {
+      closed: false,
+      send: async (records: readonly string[]) => {
+        if (diverged) await new Promise((resolve) => setTimeout(resolve, 2000));
+        const out = records.map(payroll.port);
+        if (records.some((r, i) => mutant.port(r) !== out[i])) diverged = true;
+        return out;
+      },
+      close: async () => ((session.closed = true), 0),
+    };
+    const { events, outcome } = run({ program: payroll, mutant, seed: 7 }, session);
+    await vi.advanceTimersByTimeAsync(PROVE_TIME_LIMIT_MS + 3000);
+    const done = await outcome;
+    expect(done).toMatchObject({ status: 'truncated', result: { status: 'diverged', truncated: true } });
+    const result = ofType(events, 'result')[0]!.result;
+    expect(result.shrinkPath).toBeDefined();
+    expect(validateShrinkPath(result.shrinkPath, result)).toEqual([]);
+    expect(result.shrinkPath?.steps.at(-1)?.records).toEqual(result.counterexample?.records);
+    const progress = expectProgressFields(events);
+    expect(progress.some((p) => p.phase === 'shrinking')).toBe(true);
+    expect(progress.at(-1)).toMatchObject({ phase: 'shrinking', cases: result.cases });
     expect(session.closed).toBe(true);
   });
 

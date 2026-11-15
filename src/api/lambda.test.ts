@@ -109,9 +109,31 @@ describe('Lambda proof handler', () => {
     });
     const lines = res.lines();
     expect(lines[0]).toMatchObject({ type: 'started', program: 'PAYROLL', seed: 424242, reference: 'gnucobol 3.1.2 (native)', numRuns: 2000 });
-    expect(lines.at(-2)).toMatchObject({ type: 'progress', executions: 2000, divergences: 0 });
+    expect(lines.at(-2)).toMatchObject({ type: 'progress', executions: 2000, divergences: 0, cases: 2000, phase: 'generating' });
     expect(lines.at(-1)).toMatchObject({ type: 'result', result: { status: 'equivalent', cases: 2000, seed: 424242 } });
     expect(res.stream.writableEnded).toBe(true);
+  });
+
+  it('streams cases and phase on every progress line and the Shrink_Path in the result (graphical-proof 1.9, 2.7)', async () => {
+    const { res, invoke } = setup();
+    await invoke(event({ body: JSON.stringify({ program: 'PAYROLL', mutant: 'half-up-tax', seed: 7 }) }));
+    const lines = res.lines();
+    const progress = lines.filter((l) => l.type === 'progress');
+    expect(progress.length).toBeGreaterThan(0);
+    for (const p of progress) {
+      expect(p).toEqual({
+        type: 'progress',
+        executions: expect.any(Number),
+        divergences: expect.any(Number),
+        cases: expect.any(Number),
+        phase: expect.stringMatching(/^(generating|shrinking)$/),
+        elapsedMs: expect.any(Number),
+      });
+    }
+    const result = lines.at(-1)?.result as { cases: number; shrinks: number; shrinkPath?: { total: number } };
+    expect(lines.at(-1)).toMatchObject({ type: 'result', result: { status: 'diverged' } });
+    expect(lines.at(-2)).toMatchObject({ type: 'progress', phase: 'shrinking', cases: result.cases });
+    expect(result.shrinkPath).toMatchObject({ total: result.shrinks + 1, steps: expect.any(Array) });
   });
 
   it('decodes a base64 body', async () => {
@@ -129,6 +151,13 @@ describe('Lambda proof handler', () => {
     ['invalid JSON', event({ body: '{' }), 400, 'Request body must be JSON'],
     ['a missing body', (({ body: _omit, ...rest }) => rest)(event()), 400, 'Request body is required'],
     ['invalid base64 JSON', event({ body: Buffer.from('nope').toString('base64'), isBase64Encoded: true }), 400, 'Request body must be JSON'],
+    // The progress rate is a server-side option only (graphical-proof design, "Recording granularity").
+    [
+      'a client-chosen progress interval',
+      event({ body: '{"program":"PAYROLL","progressIntervalMs":1}' }),
+      400,
+      'Unknown field: "progressIntervalMs"',
+    ],
     ['a body over 1 KB', event({ body: ' '.repeat(MAX_BODY_BYTES + 1) }), 413, `Request body must be at most ${MAX_BODY_BYTES} bytes`],
     [
       'a base64 body over 1 KB',

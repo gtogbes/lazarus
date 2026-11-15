@@ -142,13 +142,35 @@ describe('dev server: streams NDJSON', () => {
     const next = lineReader(res.body!);
     expect(await next()).toMatchObject({ type: 'started', program: 'PAYROLL', seed: 42, numRuns: 2000 });
     // The run is blocked on its first COBOL call, so this line can only come from the 4 Hz ticker.
-    expect(await next()).toMatchObject({ type: 'progress', executions: 0 });
+    expect(await next()).toMatchObject({ type: 'progress', executions: 0, cases: 0, phase: 'generating' });
 
     gated.release();
     const rest: Record<string, unknown>[] = [];
     for (let line = await next(); line; line = await next()) rest.push(line);
+    expect(rest.at(-2)).toMatchObject({ type: 'progress', executions: 2000, cases: 2000, phase: 'generating' });
     expect(rest.at(-1)).toMatchObject({ type: 'result', result: { status: 'equivalent', cases: 2000, seed: 42 } });
     expect(await waitForLog('proof finished')).toMatchObject({ program: 'PAYROLL', seed: 42, outcome: 'completed' });
+  });
+
+  it('sends cases and phase on every progress line and the Shrink_Path in a diverged result (graphical-proof 1.9, 2.7)', async () => {
+    const gated = gatedSession();
+    gated.release();
+    session = gated.session;
+    const res = await post('{"program":"PAYROLL","mutant":"half-up-tax","seed":7}');
+    expect(res.status).toBe(200);
+    const lines = (await res.text())
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    const progress = lines.filter((l) => l.type === 'progress');
+    expect(progress.length).toBeGreaterThan(0);
+    for (const p of progress) {
+      expect(p).toMatchObject({ cases: expect.any(Number), phase: expect.stringMatching(/^(generating|shrinking)$/) });
+    }
+    const result = lines.at(-1)?.result as { cases: number; shrinks: number };
+    expect(lines.at(-1)).toMatchObject({ type: 'result', result: { status: 'diverged' } });
+    expect(lines.at(-2)).toMatchObject({ type: 'progress', phase: 'shrinking', cases: result.cases });
+    expect(result).toMatchObject({ shrinkPath: { total: result.shrinks + 1, steps: expect.any(Array) } });
   });
 
   it('aborts the run and closes the session when the client disconnects', async () => {
