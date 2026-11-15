@@ -1,7 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { ProofAnnouncer } from './ProofAnnouncer';
-import { COUNT_FORMAT, DATE_FORMAT, formatDuration, formatElapsed } from './proofMessages';
+import { caseCount, COUNT_FORMAT, DATE_FORMAT, formatDuration, formatElapsed } from './proofMessages';
 import { useProofRun, type ProofStatus } from './useProofRun';
 
 const STATUS_LABEL: Record<ProofStatus, string> = {
@@ -24,11 +24,14 @@ const STATUS_CLASS: Record<ProofStatus, string> = {
 /**
  * Requirement 3.2-3.5: start a live proof, watch the counters, cancel it.
  * Requirement 6: after a live failure, offer the recorded proof and label its replay.
+ * graphical-proof Requirement 10.1: after a relapsed mutant run, offer Revive.
+ * `onBeforeRun` is called before a live Prove or Revive starts; the demo uses it to end itself first.
  */
-export function ProvePanel({ programId }: { readonly programId: string }) {
-  const { status, truncated, executions, divergences, elapsedMs, selectedMutant, start, cancel, reset } = useProofRun(
+export function ProvePanel({ programId, onBeforeRun }: { readonly programId: string; readonly onBeforeRun?: () => void }) {
+  const { status, truncated, executions, divergences, elapsedMs, selectedMutant, canRevive, start, cancel, reset, revive } = useProofRun(
     useShallow((s) => ({
       status: s.status,
+      canRevive: s.status === 'relapsed' && s.mutant !== null,
       truncated: s.result?.truncated === true,
       executions: s.executions,
       divergences: s.divergences,
@@ -37,6 +40,7 @@ export function ProvePanel({ programId }: { readonly programId: string }) {
       start: s.start,
       cancel: s.cancel,
       reset: s.reset,
+      revive: s.revive,
     })),
   );
   const proveRef = useRef<HTMLButtonElement>(null);
@@ -46,7 +50,7 @@ export function ProvePanel({ programId }: { readonly programId: string }) {
   useEffect(() => reset, [programId, reset]);
 
   return (
-    <section aria-labelledby="prove-title" className="mt-6 rounded border border-zinc-800 bg-zinc-900 p-4">
+    <section aria-labelledby="prove-title" className="mt-6 rounded border border-zinc-800 bg-zinc-900 p-4" data-testid="prove-panel">
       <h2 id="prove-title" className="text-lg font-semibold">
         Prove it
       </h2>
@@ -65,12 +69,28 @@ export function ProvePanel({ programId }: { readonly programId: string }) {
           // aria-disabled, not disabled, so keyboard focus stays on the button while the run starts.
           aria-disabled={running}
           onClick={() => {
-            if (!running) void start(programId, selectedMutant ?? undefined);
+            if (running) return;
+            onBeforeRun?.();
+            void start(programId, selectedMutant ?? undefined);
           }}
           className="rounded bg-amber-300 px-4 py-2 font-semibold text-zinc-950 hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
         >
           {status === 'idle' ? 'Prove it' : 'Prove again'}
         </button>
+        {canRevive && (
+          <button
+            type="button"
+            onClick={() => {
+              // Revive hides itself once the run starts; Prove stays the keyboard anchor, as after Cancel.
+              proveRef.current?.focus();
+              onBeforeRun?.();
+              void revive();
+            }}
+            className="rounded bg-emerald-300 px-4 py-2 font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+          >
+            Revive
+          </button>
+        )}
         {running && (
           <button
             type="button"
@@ -135,9 +155,9 @@ function ProofOutcome() {
       <p className={status === 'alive' ? 'text-emerald-300' : 'text-red-300'}>
         {status === 'alive'
           ? result.truncated
-            ? `Stopped at the 25 s limit after ${COUNT_FORMAT.format(result.cases)} cases. No divergence in those cases, but this is a partial proof.`
-            : `${COUNT_FORMAT.format(result.cases)} cases matched GnuCOBOL record for record.`
-          : `The port diverged from COBOL after ${COUNT_FORMAT.format(result.cases)} cases, shrunk in ${COUNT_FORMAT.format(result.shrinks)} steps.`}
+            ? `Stopped at the 25 s limit after ${caseCount(result.cases)}. No divergence in those cases, but this is a partial proof.`
+            : `${caseCount(result.cases)} matched GnuCOBOL record for record.`
+          : `The port diverged from COBOL after ${caseCount(result.cases)}, shrunk in ${COUNT_FORMAT.format(result.shrinks)} ${result.shrinks === 1 ? 'step' : 'steps'}.`}
       </p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         <dt className="text-zinc-400">Cases</dt>

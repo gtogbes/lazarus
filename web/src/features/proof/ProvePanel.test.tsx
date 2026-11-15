@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ProvePanel } from './ProvePanel';
-import { EQUIVALENT_RESULT, fakeStream, jsonResponse, recordingOf, serveFiles, STARTED, stubFetch } from './testing';
+import { DIVERGED_RESULT, EQUIVALENT_RESULT, fakeStream, jsonResponse, recordingOf, serveFiles, STARTED, stubFetch } from './testing';
 import { useProofRun } from './useProofRun';
 
 afterEach(() => {
@@ -132,7 +132,8 @@ describe('Prove panel recorded fallback (Requirement 6)', () => {
     expect(within(label).getByText('8 Nov 2026')).toHaveAttribute('datetime', EQUIVALENT_RESULT.generatedAt);
     expect(label).toHaveTextContent('This is not a live run.');
     expect(screen.getByTestId('proof-summary')).toHaveTextContent('2,000 cases matched GnuCOBOL');
-    expect(screen.getByRole('status')).toHaveTextContent('Recorded proof: PAYROLL is alive');
+    // The announcer updates in an effect after the visible status, so wait for it.
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Recorded proof: PAYROLL is alive'));
     expect(offer()).not.toBeInTheDocument();
   });
 
@@ -159,5 +160,97 @@ describe('Prove panel recorded fallback (Requirement 6)', () => {
     await vi.waitFor(() => expect(status()).toHaveTextContent('Alive'));
     expect(screen.queryByTestId('proof-recorded')).not.toBeInTheDocument();
     expect(offer()).not.toBeInTheDocument();
+  });
+});
+
+describe('Prove panel wording', () => {
+  it('says "1 case" and "1 step", not "1 cases", for a divergence at the first case', async () => {
+    const user = userEvent.setup();
+    const stream = fakeStream();
+    stream.send(STARTED, { type: 'result', result: { ...DIVERGED_RESULT, cases: 1, shrinks: 1 } });
+    stubFetch(() => stream);
+    render(<ProvePanel programId="PAYROLL" />);
+    await user.click(proveButton());
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Relapsed'));
+    expect(screen.getByTestId('proof-summary')).toHaveTextContent('The port diverged from COBOL after 1 case, shrunk in 1 step.');
+    expect(screen.getByRole('status')).toHaveTextContent('PAYROLL relapsed: the port diverged from COBOL after 1 case.');
+  });
+});
+
+describe('Prove panel Revive (graphical-proof Requirement 10)', () => {
+  const reviveButton = () => screen.queryByRole('button', { name: 'Revive' });
+
+  async function proveWith(result: object) {
+    const user = userEvent.setup();
+    const stream = fakeStream();
+    stream.send(STARTED, { type: 'result', result });
+    stubFetch(() => stream);
+    await user.click(proveButton());
+    return user;
+  }
+
+  it('offers Revive only after a relapsed mutant run (10.1)', async () => {
+    render(<ProvePanel programId="PAYROLL" />);
+    await proveWith(DIVERGED_RESULT);
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Relapsed'));
+    expect(reviveButton()).not.toBeInTheDocument();
+
+    useProofRun.getState().selectMutant('half-up-tax');
+    await proveWith(EQUIVALENT_RESULT);
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Alive'));
+    expect(reviveButton()).not.toBeInTheDocument();
+
+    await proveWith(DIVERGED_RESULT);
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Relapsed'));
+    expect(reviveButton()).toBeInTheDocument();
+  });
+
+  it('restores the real port from the keyboard, proves it live and keeps focus on Prove (10.2)', async () => {
+    useProofRun.getState().selectMutant('half-up-tax');
+    render(<ProvePanel programId="PAYROLL" />);
+    const user = await proveWith(DIVERGED_RESULT);
+    await vi.waitFor(() => expect(reviveButton()).toBeInTheDocument());
+    expect(screen.getByTestId('sabotage-notice')).toBeInTheDocument();
+
+    const stream = fakeStream();
+    stream.send(STARTED, { type: 'result', result: EQUIVALENT_RESULT });
+    const { calls } = stubFetch(() => stream);
+    reviveButton()!.focus();
+    await user.keyboard('{Enter}');
+    expect(proveButton()).toHaveFocus();
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Alive'));
+    expect(new TextDecoder().decode(calls[0]?.init.body as Uint8Array)).toBe('{"program":"PAYROLL"}');
+    expect(screen.queryByTestId('sabotage-notice')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('proof-recorded')).not.toBeInTheDocument();
+    expect(reviveButton()).not.toBeInTheDocument();
+  });
+  it('offers no Revive when a mutant run fails with an error (10.1)', async () => {
+    useProofRun.getState().selectMutant('half-up-tax');
+    render(<ProvePanel programId="PAYROLL" />);
+    stubFetch(() => jsonResponse(503, { error: 'Service Unavailable' }));
+    await userEvent.setup().click(proveButton());
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Proof failed'));
+    expect(reviveButton()).not.toBeInTheDocument();
+  });
+  const relapsingStream = () => {
+    const stream = fakeStream();
+    stream.send(STARTED, { type: 'result', result: DIVERGED_RESULT });
+    return stream;
+  };
+  it.each([
+    // The real port relapses live.
+    ['Relapsed', relapsingStream, 'Relapsed'],
+    // The live run fails, and so does the recorded fallback (every request answers 503).
+    ['in error', () => jsonResponse(503, { error: 'Service Unavailable' }), 'Proof failed'],
+  ] as const)('shows a revive that ends %s as any other run, with no Revive offered again (10.4)', async (_name, respond, label) => {
+    useProofRun.getState().selectMutant('half-up-tax');
+    render(<ProvePanel programId="PAYROLL" />);
+    const user = await proveWith(DIVERGED_RESULT);
+    await vi.waitFor(() => expect(reviveButton()).toBeInTheDocument());
+    stubFetch(respond);
+    await user.click(reviveButton()!);
+    await vi.waitFor(() => expect(status()).toHaveTextContent(label));
+    expect(useProofRun.getState()).toMatchObject({ mutant: null, revival: { pending: false, revivedAt: null } });
+    expect(reviveButton()).not.toBeInTheDocument();
   });
 });

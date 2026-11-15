@@ -19,7 +19,7 @@ export const PICS = {
   qty: pic(4, 0, false), // 9(4)
   price: pic(5, 2, false), // 9(5)V99
   discPct: pic(2, 1, false), // 9(2)V9
-  amount: pic(7, 2, false), // 9(7)V99 (line, discount, net, VAT, total)
+  amount: pic(7, 2, false), // 9(7)V99: WS-LINE, WS-DISC, WS-NET, WS-VAT, WS-TOTAL, OUT-LINE, OUT-DISC, OUT-VAT, OUT-TOTAL
 } as const;
 
 export const RECORD_LENGTH = 21;

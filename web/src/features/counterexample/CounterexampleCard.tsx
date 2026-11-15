@@ -1,27 +1,40 @@
 import { useShallow } from 'zustand/react/shallow';
 import type { Counterexample } from '../../../../src/harness/equivalence.types';
-import { decodeRecord, type ProgramLayout } from '../../../../src/semantics/layout';
+import type { ProgramLayout } from '../../../../src/semantics/layout';
 import type { ProgramSource } from '../program/types';
-import { COUNT_FORMAT } from '../proof/proofMessages';
+import { caseCount, COUNT_FORMAT } from '../proof/proofMessages';
 import { useProofRun } from '../proof/useProofRun';
+import { AutopsyDiff } from './AutopsyDiff';
+import { DigitInspector } from './DigitInspector';
 import { layoutFor } from './layouts';
 import { RecordTables } from './RecordTables';
+import { ShrinkViewer } from './ShrinkViewer';
 import { ReplayCommand } from './ReplayCommand';
 import { replayCommand } from './replay';
 
 /**
- * Requirement 5: explains a divergence field by field. Shown only for a
- * relapsed run of this program. The explanation is for the run's mutant
- * (`mutant` in the store), not the current sabotage selection.
+ * Requirements 5 and 9: explains a divergence. Order (graphical-proof design):
+ * Autopsy, Digit inspector, Shrink viewer, the record tables in a `details`,
+ * replay command. Shown only for a relapsed run of this program. The cause is
+ * for the run's mutant (`mutant` in the store), not the current sabotage
+ * selection.
  */
-export function CounterexampleCard({ source }: { readonly source: ProgramSource }) {
+export interface CounterexampleCardProps {
+  readonly source: ProgramSource;
+  /** Demo_Mode: the digit inspector's field. */
+  readonly inspectField?: string | undefined;
+  /** Demo_Mode: a new key restarts the Shrink viewer from its first step. */
+  readonly shrinkKey?: string | undefined;
+}
+
+export function CounterexampleCard({ source, inspectField, shrinkKey }: CounterexampleCardProps) {
   const { status, program, mutant, result } = useProofRun(
     useShallow((s) => ({ status: s.status, program: s.program, mutant: s.mutant, result: s.result })),
   );
   if (status !== 'relapsed' || program !== source.id || !result) return null;
   const counterexample = result.counterexample;
   const layout = layoutFor(source.id);
-  const mutantInfo = mutant === null ? null : source.mutants.find((m) => m.id === mutant);
+  const mutantInfo = mutant === null ? undefined : source.mutants.find((m) => m.id === mutant);
   const replay = replayCommand({ program: source.id, mutant, seed: result.seed, cases: result.cases });
 
   return (
@@ -33,32 +46,13 @@ export function CounterexampleCard({ source }: { readonly source: ProgramSource 
       <h2 id="counterexample-title" className="text-lg font-semibold">
         Counterexample
       </h2>
-      {counterexample && layout ? (
-        <Divergence counterexample={counterexample} layout={layout} />
-      ) : (
-        <p className="mt-1 text-sm text-zinc-300">This run did not record the records that differ.</p>
-      )}
-
-      <h3 className="mt-4 font-semibold">Why it diverged</h3>
-      {mutant === null ? (
-        <p className="mt-1 max-w-prose text-sm">No sabotage was planted: the real port differs from COBOL here.</p>
-      ) : mutantInfo ? (
-        <div className="mt-1 max-w-prose text-sm" data-testid="counterexample-mutant">
-          <p className="font-semibold">Sabotage: {mutantInfo.title}</p>
-          <p className="mt-1 text-zinc-300">
-            Breaks <code className="font-mono text-zinc-100">{mutantInfo.rule}</code>
-          </p>
-          <p className="mt-1">{mutantInfo.explanation}</p>
-        </div>
-      ) : (
-        <p className="mt-1 text-sm">
-          Sabotage: mutant <code className="font-mono">{mutant}</code>.
-        </p>
-      )}
-
+      <AutopsyDiff counterexample={counterexample} layout={layout} mutant={mutant} mutantInfo={mutantInfo} />
+      <DigitInspector counterexample={counterexample} layout={layout?.output} preferredField={inspectField} />
+      {layout && <ShrinkViewer key={shrinkKey} path={result.shrinkPath} layout={layout.input} counterexample={counterexample} />}
+      {counterexample && layout && <RecordDetails counterexample={counterexample} layout={layout} />}
       <h3 className="mt-4 font-semibold">Replay it locally</h3>
       <p className="mt-1 text-sm" data-testid="shrink-summary">
-        Found after {COUNT_FORMAT.format(result.cases)} cases and shrunk in {COUNT_FORMAT.format(result.shrinks)}{' '}
+        Found after {caseCount(result.cases)} and shrunk in {COUNT_FORMAT.format(result.shrinks)}{' '}
         {result.shrinks === 1 ? 'step' : 'steps'}. Seed <code className="font-mono">{result.seed}</code>.
       </p>
       {result.truncated && (
@@ -71,27 +65,19 @@ export function CounterexampleCard({ source }: { readonly source: ProgramSource 
   );
 }
 
-function Divergence({ counterexample: c, layout }: { counterexample: Counterexample; layout: ProgramLayout }) {
+/** The field-by-field tables and the raw records, folded away below the Autopsy. */
+function RecordDetails({ counterexample: c, layout }: { counterexample: Counterexample; layout: ProgramLayout }) {
   const position = `${c.line + 1} of ${c.records.length}`;
   const cobol = c.cobol[c.line];
   const port = c.port[c.line];
-  const lengthOff = [cobol, port].some((r) => r !== undefined && !decodeRecord(layout.output, r).lengthMatches);
   return (
     <>
-      <p className="mt-1 text-sm" data-testid="counterexample-position">
-        Record {position} is the first that differs, at column {c.column + 1}.
-      </p>
-      {c.cobol.length !== c.port.length && (
-        <p className="mt-1 text-sm text-amber-200">
-          COBOL wrote {c.cobol.length} records and the port wrote {c.port.length}.
-        </p>
-      )}
-      {lengthOff && (
-        <p className="mt-1 text-sm text-amber-200">
-          An output record is not {layout.output.length} characters long. See the raw records below.
-        </p>
-      )}
-      <RecordTables layout={layout} position={position} input={c.records[c.line]} cobol={cobol} port={port} />
+      <details className="mt-4 text-sm" data-testid="record-tables">
+        <summary className="cursor-pointer rounded font-semibold focus-visible:outline-2 focus-visible:outline-amber-300">
+          Records field by field
+        </summary>
+        <RecordTables layout={layout} position={position} input={c.records[c.line]} cobol={cobol} port={port} />
+      </details>
       <details className="mt-3 text-sm">
         <summary className="cursor-pointer rounded focus-visible:outline-2 focus-visible:outline-amber-300">
           Raw records

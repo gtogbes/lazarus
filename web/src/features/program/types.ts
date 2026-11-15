@@ -46,6 +46,29 @@ export interface MutantInfo {
   /** Never empty: the build fails on a mutant identical to the real port. */
   readonly hunks: readonly DiffHunk[];
 }
+/**
+ * One COBOL data item and the port code that represents it (Requirement 6.1).
+ * Built and checked by `web/build/fieldLinks.ts`.
+ */
+export interface FieldLink {
+  /** COBOL data name, e.g. `OUT-GROSS`. */
+  readonly name: string;
+  readonly section: 'input' | 'output' | 'working';
+  /** PIC as written, without any VALUE clause, e.g. `9(5)V99` or `9(5)V99 COMP-3`. */
+  readonly picture: string;
+  /** 1-based line of the item in the COBOL source. */
+  readonly cobolLine: number;
+  /** 1-based port lines: the primary one first (slice, array element or `PICS` entry), then uses. */
+  readonly portLines: readonly number[];
+  /** The port code at the primary line, e.g. `formatDisplay(gross, PICS.gross)`. */
+  readonly portCode: string;
+  /** The TypeScript representation, e.g. `bigint scaled by 100, 0.00 to 99999.99, unsigned`. */
+  readonly representation: string;
+  /** Record fields only: 0-based offset and width in characters. */
+  readonly offset?: number;
+  readonly length?: number;
+}
+
 /** Build output for one program view: both sources pre-highlighted, plus statement links. */
 export interface ProgramSource {
   readonly id: string;
@@ -57,4 +80,6 @@ export interface ProgramSource {
   readonly links: readonly StatementLink[];
   /** Sabotage options (Requirement 4), in the order the mutants module lists them. */
   readonly mutants: readonly MutantInfo[];
+  /** Field map for the stitch lines (Requirement 6.1), in COBOL source order. */
+  readonly fields: readonly FieldLink[];
 }

@@ -1,6 +1,10 @@
 import type { ProofRunState } from './useProofRun';
 
 export const COUNT_FORMAT = new Intl.NumberFormat('en-GB');
+/** "1 case", "2,000 cases". */
+export function caseCount(n: number): string {
+  return `${COUNT_FORMAT.format(n)} ${n === 1 ? 'case' : 'cases'}`;
+}
 /** Same style as the morgue's recorded dates. */
 export const DATE_FORMAT = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' });
 
@@ -38,16 +42,16 @@ function liveStatusMessage({ status, program, result, error, executions }: Messa
     case 'alive':
       if (!result) return `${name} is alive.`;
       return result.truncated
-        ? `${name} is alive, but the proof stopped at the time limit after ${COUNT_FORMAT.format(result.cases)} cases with no divergence.`
-        : `${name} is alive: ${COUNT_FORMAT.format(result.cases)} cases matched GnuCOBOL.`;
+        ? `${name} is alive, but the proof stopped at the time limit after ${caseCount(result.cases)} with no divergence.`
+        : `${name} is alive: ${caseCount(result.cases)} matched GnuCOBOL.`;
     case 'relapsed':
       return result
-        ? `${name} relapsed: the port diverged from COBOL after ${COUNT_FORMAT.format(result.cases)} cases.`
+        ? `${name} relapsed: the port diverged from COBOL after ${caseCount(result.cases)}.`
         : `${name} relapsed.`;
     case 'error':
       return `The proof failed: ${error?.message ?? 'unknown error'}`;
     case 'cancelled':
-      return `Proof cancelled after ${COUNT_FORMAT.format(executions)} cases. Nothing was proven.`;
+      return `Proof cancelled after ${caseCount(executions)}. Nothing was proven.`;
   }
 }
 
@@ -58,5 +62,5 @@ export function progressMessage({
   elapsedMs,
 }: Pick<ProofRunState, 'executions' | 'divergences' | 'elapsedMs'>): string {
   const plural = divergences === 1 ? 'divergence' : 'divergences';
-  return `${COUNT_FORMAT.format(executions)} cases run, ${COUNT_FORMAT.format(divergences)} ${plural}, ${Math.round(elapsedMs / 1000)} seconds elapsed.`;
+  return `${caseCount(executions)} run, ${COUNT_FORMAT.format(divergences)} ${plural}, ${Math.round(elapsedMs / 1000)} seconds elapsed.`;
 }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { build, type Rollup } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PROGRAM_META } from '../../src/ports/programs.meta';
+import { recordLayout } from '../../src/semantics/layout';
 import {
   DIFF_ADDED_BACKGROUND,
   DIFF_REMOVED_BACKGROUND,
@@ -81,6 +82,61 @@ describe.each(PROGRAM_META.map((p) => p.id))('%s program source', (id) => {
   });
 });
 
+describe('field map (6.1)', () => {
+  /** Field counts per section, from the DATA DIVISIONs: [input, output, working storage]. */
+  const COUNTS: Record<string, readonly [number, number, number]> = {
+    INTCALC: [4, 4, 3],
+    PAYROLL: [4, 5, 4],
+    INVOICE: [5, 6, 5],
+  };
+
+  async function load(id: string) {
+    const files = programFiles(id);
+    const source = await readProgramSource(REPO_ROOT, files);
+    const read = async (p: string) => (await readFile(path.join(REPO_ROOT, p), 'utf8')).split('\n');
+    return { source, cobol: await read(files.cobolPath), port: await read(files.portPath) };
+  }
+
+  it.each(Object.entries(COUNTS))('links every %s field to the code that represents it', async (id, counts) => {
+    const { source, cobol, port } = await load(id);
+    const count = (section: string) => source.fields.filter((f) => f.section === section).length;
+    expect([count('input'), count('output'), count('working')]).toEqual(counts);
+    expect(source.fields).toHaveLength(counts[0] + counts[1] + counts[2]);
+    for (const field of source.fields) {
+      expect(cobol[field.cobolLine - 1], field.name).toMatch(new RegExp(`\\b${field.name}\\b`));
+      expect(port[field.portLines[0]! - 1], field.name).toContain(field.portCode);
+    }
+  });
+
+  it('links PAYROLL OUT-TAX to its array element and the tax PICS entry, and WS-TAX to that entry', async () => {
+    const { source, port } = await load('PAYROLL');
+    const taxEntry = port.findIndex((line) => line.includes('tax: pic(5, 2, false)')) + 1;
+    expect(taxEntry).toBeGreaterThan(0);
+    const outTax = source.fields.find((f) => f.name === 'OUT-TAX');
+    expect(outTax).toMatchObject({ section: 'output', portCode: 'formatDisplay(tax, PICS.tax)', picture: '9(5)V99' });
+    expect(outTax?.portLines).toContain(taxEntry);
+    const wsTax = source.fields.find((f) => f.name === 'WS-TAX');
+    expect(wsTax).toMatchObject({ section: 'working', portCode: 'tax: pic(5, 2, false)', picture: '9(5)V99 COMP-3' });
+    expect(wsTax?.portLines[0]).toBe(taxEntry);
+  });
+
+  it('maps INVOICE working storage to the shared amount entry through its comment', async () => {
+    const { source } = await load('INVOICE');
+    const working = source.fields.filter((f) => f.section === 'working');
+    expect(working.map((f) => f.name)).toEqual(['WS-LINE', 'WS-DISC', 'WS-NET', 'WS-VAT', 'WS-TOTAL']);
+    expect(new Set(working.map((f) => f.portCode))).toEqual(new Set(['amount: pic(7, 2, false)']));
+  });
+
+  it('gives INTCALC input fields their record offsets', async () => {
+    const { source } = await load('INTCALC');
+    expect(source.fields.find((f) => f.name === 'IN-BALANCE')).toMatchObject({
+      offset: 8,
+      length: 12,
+      portCode: 'const balance = parseDisplay(record.slice(8, 20), PICS.balance)',
+    });
+  });
+});
+
 describe('programSourcesPlugin', () => {
   const dirs: string[] = [];
   afterAll(async () => {
@@ -96,17 +152,33 @@ export const MUTANTS = [
   { id: 'plus-two', title: 'Append b', rule: 'COMPUTE WS-A = WS-B + 1', explanation: 'Wrong.', port: plusTwo },
 ];
 `;
-  const DEMO_PORT = "// COMPUTE WS-A = WS-B + 1\nexport function processRecord(record: string): string {\n  return record + 'a';\n}\n";
+  const DEMO_PORT =
+    "// COMPUTE WS-A = WS-B + 1\nexport function processRecord(record: string): string {\n  return [record.slice(0, 1) + 'a'].join(' ');\n}\n";
+  const DEMO_COBOL = [
+    '       DATA DIVISION.',
+    '       FILE SECTION.',
+    '       FD  IN-FILE.',
+    '       01  IN-REC.',
+    '           05 IN-A            PIC X.',
+    '       FD  OUT-FILE.',
+    '       01  OUT-REC.',
+    '           05 OUT-A           PIC X(2).',
+    '       PROCEDURE DIVISION.',
+    '           COMPUTE WS-A = WS-B + 1',
+    '           STOP RUN.',
+    '',
+  ].join('\n');
+  const DEMO_LAYOUT = {
+    input: recordLayout('IN-REC', [{ name: 'IN-A', picture: 'X' }]),
+    output: recordLayout('OUT-REC', [{ name: 'OUT-A', picture: 'X(2)' }]),
+  };
 
   async function buildDemo(portSource: string, mutantsSource = DEMO_MUTANTS(' // MUTANT: a became b')) {
     const root = await mkdtemp(path.join(tmpdir(), 'lazarus-sources-'));
     dirs.push(root);
     await mkdir(path.join(root, 'cobol/programs'), { recursive: true });
     await mkdir(path.join(root, 'src/ports'), { recursive: true });
-    await writeFile(
-      path.join(root, 'cobol/programs/DEMO.cbl'),
-      '       PROCEDURE DIVISION.\n           COMPUTE WS-A = WS-B + 1\n           STOP RUN.\n',
-    );
+    await writeFile(path.join(root, 'cobol/programs/DEMO.cbl'), DEMO_COBOL);
     await writeFile(path.join(root, 'src/ports/demo.ts'), portSource);
     await writeFile(path.join(root, 'src/ports/demo.mutants.ts'), mutantsSource);
     await writeFile(
@@ -117,7 +189,7 @@ export const MUTANTS = [
       root,
       configFile: false,
       logLevel: 'silent',
-      plugins: [programSourcesPlugin({ repoRoot: root, programIds: ['DEMO'] })],
+      plugins: [programSourcesPlugin({ repoRoot: root, programIds: ['DEMO'], layouts: { DEMO: DEMO_LAYOUT } })],
       build: { write: false, lib: { entry: path.join(root, 'main.js'), formats: ['es'] } },
     });
   }
@@ -131,7 +203,7 @@ export const MUTANTS = [
     expect(entry?.code).toContain(`import("./${demo?.fileName ?? ''}")`);
     expect(entry?.code).not.toContain('links');
     // Unminified library output: an object literal holding the link and the highlighted lines.
-    expect(demo?.code).toMatch(/quote: "COMPUTE WS-A = WS-B \+ 1",\s*port: \{\s*start: 1,\s*end: 4\s*\},\s*cobol: \{\s*start: 2,\s*end: 2\s*\}/);
+    expect(demo?.code).toMatch(/quote: "COMPUTE WS-A = WS-B \+ 1",\s*port: \{\s*start: 1,\s*end: 4\s*\},\s*cobol: \{\s*start: 10,\s*end: 10\s*\}/);
     expect(demo?.code).toContain('"PROCEDURE DIVISION"');
     // The mutant's metadata and diff are plain data in the same lazy chunk, not in the entry.
     expect(demo?.code).toContain('title: "Append b"');
@@ -142,6 +214,13 @@ export const MUTANTS = [
   it('fails the build when a port quotes COBOL that does not exist', async () => {
     const result = buildDemo(DEMO_PORT.replace('+ 1', '+ 2'));
     await expect(result).rejects.toThrow(/line 1 "COMPUTE WS-A = WS-B \+ 2": no COBOL statement matches/);
+  });
+
+  it('fails the build when a field mapping is broken, listing the field (6.2)', async () => {
+    const result = buildDemo(DEMO_PORT.replace('record.slice(0, 1)', 'record.slice(0, 2)'));
+    await expect(result).rejects.toThrow(/Field linking failed for src\/ports\/demo\.ts/);
+    await expect(result).rejects.toThrow(/IN-A: no record\.slice\(0, 1\) in the port/);
+    await expect(result).rejects.toThrow(/port line 3: record\.slice\(0, 2\) matches no input field/);
   });
 
   it('fails the build when a mutant has no // MUTANT: marker', async () => {

@@ -18,6 +18,7 @@
  * and only modulates part of the arc intensity; the alarm pulses at 1 Hz.
  */
 import type { ProofStatus } from '../features/proof/useProofRun';
+import { acceptPulse } from '../features/vitals/pulseGate';
 
 export type SceneMood = 'buried' | 'reanimating' | 'alive' | 'relapsed' | 'fault';
 
@@ -210,16 +211,56 @@ export function withNudge(look: SceneLighting, mood: SceneMood, sinceNudgeSec: n
   return { ...look, arcIntensity: look.arcIntensity + NUDGE_ARC_BOOST * Math.sin(Math.PI * t) };
 }
 
+/**
+ * Revive mood (graphical-proof Requirement 10.3): when the run started by Revive ends
+ * Alive, the lab plays one green swell over the Alive look, lasting `REVIVE_MS` (under
+ * 3 s). Flash safety (WCAG 2.3.1, Requirement 14.5): one half sine, so one rise and
+ * one fall per revive (under 0.5 flashes a second); revives start at most once per
+ * `MIN_PULSE_INTERVAL_MS` (pulseGate.ts) and never while one plays (`acceptRevive`);
+ * the arcs rise by at most `REVIVE_ARC_DEPTH` of their level, the flicker's depth.
+ */
+export const REVIVE_MS = 2000;
+export const REVIVE_ARC_DEPTH = FLICKER_DEPTH;
+/** Largest share of green mixed into the key and arc colours, at the peak. */
+export const REVIVE_TINT = 0.45;
+const REVIVE_GREEN = 0x4ade80;
+/** Whether a revive at `nowMs` may start: pulse-gated, and not while the last one plays. */
+export function acceptRevive(nowMs: number, lastMs: number | null): boolean {
+  return acceptPulse(nowMs, lastMs) && (lastMs === null || nowMs - lastMs >= REVIVE_MS);
+}
+/**
+ * `look` with the revive swell applied, `sinceReviveSec` after it started (null: none).
+ * Only the Alive lab plays it; any other mood (a newer run) owns the lights.
+ */
+export function withRevive(look: SceneLighting, mood: SceneMood, sinceReviveSec: number | null): SceneLighting {
+  if (mood !== 'alive' || sinceReviveSec === null) return look;
+  const t = (sinceReviveSec * 1000) / REVIVE_MS;
+  if (!(t >= 0 && t < 1)) return look;
+  const swell = Math.sin(Math.PI * t);
+  return {
+    ...look,
+    keyColor: mixHex(look.keyColor, REVIVE_GREEN, REVIVE_TINT * swell),
+    arcColor: mixHex(look.arcColor, REVIVE_GREEN, REVIVE_TINT * swell),
+    arcIntensity: look.arcIntensity * (1 + REVIVE_ARC_DEPTH * swell),
+  };
+}
+
 /** Frames per second the scene renders at. Steady moods need less: reels and dust move slowly. */
 export const FULL_FPS = 60;
 export const STEADY_FPS = 30;
 
 /**
  * Render rate for this frame: full while something changes quickly (a running proof,
- * the Alive burst, a nudge pulse), half otherwise to save GPU and battery.
+ * the Alive burst, a nudge pulse, a revive), half otherwise to save GPU and battery.
  */
-export function targetFps(mood: SceneMood, sinceMoodSec: number, sinceNudgeSec: number | null): number {
+export function targetFps(
+  mood: SceneMood,
+  sinceMoodSec: number,
+  sinceNudgeSec: number | null,
+  sinceReviveSec: number | null = null,
+): number {
   if (mood === 'reanimating') return FULL_FPS;
+  if (mood === 'alive' && sinceReviveSec !== null && sinceReviveSec >= 0 && sinceReviveSec * 1000 < REVIVE_MS) return FULL_FPS;
   if (mood === 'alive' && sinceMoodSec * 1000 < REANIMATION_MS) return FULL_FPS;
   if (mood === 'buried' && sinceNudgeSec !== null && sinceNudgeSec * 1000 < NUDGE_MS) return FULL_FPS;
   return STEADY_FPS;

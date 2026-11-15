@@ -31,4 +31,35 @@
       transform: none;
     }
   }
+
+  /*
+   * Revive shock pulse on the Resurrection_Fill (graphical-proof Requirement 10.3):
+   * one green rise and fall in 800 ms, played once. One pulse is one flash; the
+   * caller starts it only through pulseGate (at least 1 s apart), so it stays under
+   * 3 flashes in any second (WCAG 2.3.1, Requirement 14.5).
+   */
+  --animate-shock: shock 800ms ease-out 1 both;
+  @keyframes shock {
+    0% {
+      filter: none;
+    }
+    30% {
+      filter: brightness(1.25) drop-shadow(0 0 10px #4ade80);
+    }
+    100% {
+      filter: none;
+    }
+  }
+}
+
+/* The `shock` class runs the pulse only without reduced motion (Requirement 14.3). */
+@media (prefers-reduced-motion: no-preference) {
+  .shock {
+    animation: var(--animate-shock);
+  }
+
+  /* A paused demo holds the pulse where it is (graphical-proof Requirement 11.7; DemoBar.tsx). */
+  [data-demo-paused] .shock {
+    animation-play-state: paused;
+  }
 }

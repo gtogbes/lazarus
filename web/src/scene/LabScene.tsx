@@ -62,6 +62,7 @@ import {
   sceneFrame,
   targetFps,
   withNudge,
+  withRevive,
   type SceneMood,
 } from './sceneLook';
 import { useSceneNudge } from './sceneNudge';
@@ -291,10 +292,12 @@ function startLab(canvas: HTMLCanvasElement, fail: (error: unknown) => void): ()
   const step = (delta: number) => {
     const { status, executions, elapsedMs } = useProofRun.getState();
     const mood = moodForStatus(status);
-    const nudgedAt = useSceneNudge.getState().startedAt;
-    const sinceNudgeSec = nudgedAt === null ? null : (performance.now() - nudgedAt) / 1000;
+    const { startedAt: nudgedAt, revivedAt } = useSceneNudge.getState();
+    const now = performance.now();
+    const sinceNudgeSec = nudgedAt === null ? null : (now - nudgedAt) / 1000;
+    const sinceReviveSec = revivedAt === null ? null : (now - revivedAt) / 1000;
     if (!lab) return;
-    lab.animate(mood, Math.min(MAX_DT_SEC, delta), casesPerSecond(executions, elapsedMs), sinceNudgeSec);
+    lab.animate(mood, Math.min(MAX_DT_SEC, delta), casesPerSecond(executions, elapsedMs), sinceNudgeSec, sinceReviveSec);
     const p = renderLimiter;
     p.sec += delta;
     if (mood !== p.mood) {
@@ -303,7 +306,7 @@ function startLab(canvas: HTMLCanvasElement, fail: (error: unknown) => void): ()
     } else {
       p.moodSec += delta;
     }
-    if (!p.due && p.sec + FRAME_SLACK_SEC < 1 / targetFps(mood, p.moodSec, sinceNudgeSec)) return;
+    if (!p.due && p.sec + FRAME_SLACK_SEC < 1 / targetFps(mood, p.moodSec, sinceNudgeSec, sinceReviveSec)) return;
     composer.render(Math.min(MAX_DT_SEC, p.sec));
     p.sec = 0;
     p.due = false;
@@ -393,7 +396,7 @@ interface LabStage {
   readonly rig: LabRig;
   /** The GLB plus the runtime lights and motes, as one group. */
   readonly root: Group;
-  animate(mood: SceneMood, dt: number, casesPerSec: number, sinceNudgeSec: number | null): void;
+  animate(mood: SceneMood, dt: number, casesPerSec: number, sinceNudgeSec: number | null, sinceReviveSec: number | null): void;
   /** Frees what this stage created. The GLB stays loaded (and cached) for a later mount. */
   dispose(): void;
 }
@@ -433,7 +436,7 @@ function createLabStage(rig: LabRig, renderer: WebGLRenderer): LabStage {
   return {
     rig,
     root,
-    animate(mood, dt, casesPerSec, sinceNudgeSec) {
+    animate(mood, dt, casesPerSec, sinceNudgeSec, sinceReviveSec) {
       if (mood !== clock.mood) {
         clock.mood = mood;
         clock.sinceMoodSec = 0;
@@ -441,7 +444,7 @@ function createLabStage(rig: LabRig, renderer: WebGLRenderer): LabStage {
         clock.sinceMoodSec += dt;
       }
       clock.flickerPhase = advancePhase(clock.flickerPhase, flickerHz(casesPerSec), dt);
-      const look = withNudge(sceneFrame(mood, clock), mood, sinceNudgeSec);
+      const look = withRevive(withNudge(sceneFrame(mood, clock), mood, sinceNudgeSec), mood, sinceReviveSec);
 
       key.color.setHex(look.keyColor);
       key.intensity = look.keyIntensity * KEY_CANDELA;

@@ -4,7 +4,13 @@
  * fields are copied, so unknown fields never reach the UI.
  */
 import type { ProveEvent } from '../../../../src/api/events';
-import type { Counterexample, EquivalenceResult } from '../../../../src/harness/equivalence.types';
+import type {
+  Counterexample,
+  EquivalenceResult,
+  ProofPhase,
+  ShrinkPath,
+} from '../../../../src/harness/equivalence.types';
+import { validateShrinkPath } from '../../../../src/harness/shrinkPath';
 
 type Fields = Record<string, unknown>;
 
@@ -16,6 +22,7 @@ const isDuration = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const isString = (value: unknown): value is string => typeof value === 'string';
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
+const isPhase = (value: unknown): value is ProofPhase => value === 'generating' || value === 'shrinking';
 
 function parseCounterexample(value: unknown): Counterexample | null {
   if (!isObject(value)) return null;
@@ -24,11 +31,36 @@ function parseCounterexample(value: unknown): Counterexample | null {
   if (!isCount(line) || !isCount(column)) return null;
   return { records, cobol, port, line, column };
 }
+/**
+ * A copy of the result's Shrink_Path with only known fields, or undefined when
+ * it is absent or invalid (graphical-proof Requirement 2.8). The caller keeps
+ * the rest of the result either way.
+ */
+function parseShrinkPath(value: unknown, result: Pick<EquivalenceResult, 'shrinks' | 'counterexample'>) {
+  if (value === undefined || validateShrinkPath(value, result).length > 0) return undefined;
+  // Validated above: total is an integer and every step has an index, string records and a line in range.
+  const { total, steps } = value as ShrinkPath;
+  return {
+    total,
+    steps: steps.map(({ step, records, line }) => ({ step, records: [...records], line })),
+  } satisfies ShrinkPath;
+}
 
 export function parseEquivalenceResult(value: unknown): EquivalenceResult | null {
   if (!isObject(value)) return null;
-  const { program, status, reference, generatedAt, seed, cases, shrinks, durationMs, counterexample, truncated } =
-    value;
+  const {
+    program,
+    status,
+    reference,
+    generatedAt,
+    seed,
+    cases,
+    shrinks,
+    durationMs,
+    counterexample,
+    truncated,
+    shrinkPath,
+  } = value;
   if (!isString(program) || !isString(reference) || !isString(generatedAt)) return null;
   if (!isInt(seed) || !isCount(cases) || !isCount(shrinks) || !isDuration(durationMs)) return null;
   if (truncated !== undefined && truncated !== true) return null;
@@ -46,7 +78,9 @@ export function parseEquivalenceResult(value: unknown): EquivalenceResult | null
   if (status === 'diverged') {
     // A divergence without a usable counterexample cannot be explained (Requirement 5), so reject it.
     const parsed = parseCounterexample(counterexample);
-    return parsed ? { ...base, status, counterexample: parsed } : null;
+    if (!parsed) return null;
+    const path = parseShrinkPath(shrinkPath, { shrinks, counterexample: parsed });
+    return { ...base, status, counterexample: parsed, ...(path ? { shrinkPath: path } : {}) };
   }
   return null;
 }
@@ -62,9 +96,14 @@ export function parseProveEvent(value: unknown): ProveEvent | null {
       return { type: 'started', program, ...(mutant === undefined ? {} : { mutant }), seed, reference, numRuns };
     }
     case 'progress': {
-      const { executions, divergences, elapsedMs } = value;
+      const { executions, divergences, elapsedMs, cases, phase } = value;
       if (!isCount(executions) || !isCount(divergences) || !isDuration(elapsedMs)) return null;
-      return { type: 'progress', executions, divergences, elapsedMs };
+      const base = { type: 'progress', executions, divergences, elapsedMs } as const;
+      // Older servers and version 1 recordings send neither field; progressModel derives them (Requirement 1.8).
+      if (cases === undefined && phase === undefined) return base;
+      // Checks one event can show (Requirement 1.7). The numRuns bound and the order across events are checked in progressModel.
+      if (!isCount(cases) || !isPhase(phase) || cases > executions) return null;
+      return { ...base, cases, phase };
     }
     case 'result': {
       const result = parseEquivalenceResult(value.result);

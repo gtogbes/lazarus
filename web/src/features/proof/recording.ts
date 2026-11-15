@@ -4,7 +4,12 @@
  * `recorded/<PROG>.<mutant>.json` (mutant). A recording is the event stream of a
  * real proof run, so the store can replay it through the same fields as a live run:
  *
- *   { "version": 1, "events": [started, progress..., result] }
+ *   { "version": 1 | 2, "events": [started, progress..., result] }
+ *
+ * Version 2 (graphical-proof Requirement 3) requires `cases` and `phase` on
+ * every progress event and a valid `shrinkPath` on a diverged result. Version 1
+ * has neither; the store derives them (progressModel.ts). Progress of either
+ * version goes through the same cross-event checks as a live stream.
  *
  * The date shown for a recording is its result's `generatedAt`. Files are
  * untrusted input: every event goes through parseProveEvent, and anything that
@@ -12,10 +17,16 @@
  */
 import type { ProveEvent } from '../../../../src/api/events';
 import type { EquivalenceResult } from '../../../../src/harness/equivalence.types';
+import { applyProgress, INITIAL_PROGRESS_STATE } from './progressModel';
 import { parseProveEvent } from './proveEvent';
 
-export const RECORDING_VERSION = 1;
-/** 25 s at 4 Hz is about 100 snapshots; anything far beyond that is not a recording. */
+/** The newest version (scripts/record-proofs.ts switches to it in graphical-proof task 4.2). */
+export const RECORDING_VERSION = 2;
+export const RECORDING_VERSIONS: readonly number[] = [1, 2];
+/**
+ * Version 2 snapshots every 20 ms. The slowest recorded proof takes about
+ * 0.7 s, about 35 events, so 500 still allows a 10 s run.
+ */
 export const MAX_RECORDED_EVENTS = 500;
 
 type Started = Extract<ProveEvent, { type: 'started' }>;
@@ -51,7 +62,7 @@ export function recordingUrl(target: RecordingTarget): string {
 export function parseRecording(value: unknown, expected?: RecordingTarget): Recording | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const { version, events } = value as Record<string, unknown>;
-  if (version !== RECORDING_VERSION || !Array.isArray(events)) return null;
+  if (typeof version !== 'number' || !RECORDING_VERSIONS.includes(version) || !Array.isArray(events)) return null;
   if (events.length < 2 || events.length > MAX_RECORDED_EVENTS) return null;
 
   const parsed = events.map(parseProveEvent);
@@ -60,14 +71,21 @@ export function parseRecording(value: unknown, expected?: RecordingTarget): Reco
   if (first?.type !== 'started' || last?.type !== 'result') return null;
 
   const progress: ProgressEvent[] = [];
-  let previousMs = 0;
+  let state = INITIAL_PROGRESS_STATE;
   for (const event of parsed.slice(1, -1)) {
-    if (event?.type !== 'progress' || event.elapsedMs < previousMs) return null;
-    previousMs = event.elapsedMs;
+    if (event?.type !== 'progress' || event.elapsedMs < state.elapsedMs) return null;
+    if (version === 2 && (event.cases === undefined || event.phase === undefined)) return null;
+    const next = applyProgress(state, event, first.numRuns);
+    if (!next) return null;
+    state = next;
     progress.push(event);
   }
 
   const { result } = last;
+  // parseProveEvent drops an invalid shrinkPath, so none here means missing or invalid.
+  if (version === 2 && (state.cases > result.cases || (result.status === 'diverged' && !result.shrinkPath))) {
+    return null;
+  }
   if (result.program !== first.program || result.seed !== first.seed || result.reference !== first.reference) return null;
   if (Number.isNaN(Date.parse(result.generatedAt))) return null;
   if (expected) {

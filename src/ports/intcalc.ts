@@ -19,7 +19,7 @@ export const PICS = {
   rate: pic(2, 4, false), // 9(2)V9(4)
   days: pic(3, 0, false), // 9(3)
   interest: pic(7, 2, true), // S9(7)V99
-  newBalance: pic(9, 2, true), // S9(9)V99
+  newBalance: pic(9, 2, true), // S9(9)V99: WS-NEW-BAL, OUT-NEW-BAL
 } as const;
 
 export const RECORD_LENGTH = 29;

@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { ProofStatus } from '../features/proof/useProofRun';
+import { MIN_PULSE_INTERVAL_MS } from '../features/vitals/pulseGate';
 import {
   ALARM_HZ,
   MAX_FLICKER_HZ,
@@ -10,8 +11,11 @@ import {
   NUDGE_MIN_INTERVAL_MS,
   NUDGE_MS,
   REANIMATION_MS,
+  REVIVE_ARC_DEPTH,
+  REVIVE_MS,
   STEADY_FPS,
   acceptNudge,
+  acceptRevive,
   advancePhase,
   casesPerSecond,
   flickerHz,
@@ -19,6 +23,7 @@ import {
   sceneFrame,
   targetFps,
   withNudge,
+  withRevive,
   type SceneMood,
 } from './sceneLook';
 
@@ -159,6 +164,60 @@ describe('morgue nudge', () => {
         expect({ ...nudged, arcIntensity: look.arcIntensity }).toEqual(look);
       }),
     );
+  });
+});
+
+describe('revive mood (graphical-proof Requirements 10.3, 14.5)', () => {
+  const alive = sceneFrame('alive', { sinceMoodSec: 10, flickerPhase: 0 });
+  it('lasts under 3 s and leaves the Alive look untouched before, after and without it', () => {
+    expect(REVIVE_MS).toBeLessThan(3000);
+    expect(withRevive(alive, 'alive', 0)).toEqual(alive);
+    expect(withRevive(alive, 'alive', REVIVE_MS / 1000)).toEqual(alive);
+    expect(withRevive(alive, 'alive', -0.1)).toEqual(alive);
+    expect(withRevive(alive, 'alive', null)).toEqual(alive);
+    expect(withRevive(alive, 'alive', REVIVE_MS / 2000).arcColor).not.toBe(alive.arcColor);
+  });
+  it('rises once and falls once (one flash), within the flicker depth', () => {
+    const steps = 200;
+    const arcs = Array.from({ length: steps + 1 }, (_, i) => withRevive(alive, 'alive', (i / steps) * (REVIVE_MS / 1000)).arcIntensity);
+    let turns = 0;
+    for (let i = 2; i < arcs.length; i++) {
+      const before = Math.sign(arcs[i - 1]! - arcs[i - 2]!);
+      const after = Math.sign(arcs[i]! - arcs[i - 1]!);
+      if (before !== 0 && after !== 0 && before !== after) turns += 1;
+    }
+    expect(turns).toBe(1);
+    expect(Math.max(...arcs)).toBeLessThanOrEqual(alive.arcIntensity * (1 + REVIVE_ARC_DEPTH) + 1e-9);
+    expect(Math.min(...arcs)).toBeGreaterThanOrEqual(alive.arcIntensity - 1e-9);
+  });
+  it('starts at most once a second and never while one plays, so under 3 flashes a second', () => {
+    expect(acceptRevive(5000, null)).toBe(true);
+    expect(acceptRevive(5000 + MIN_PULSE_INTERVAL_MS - 1, 5000)).toBe(false);
+    expect(acceptRevive(5000 + REVIVE_MS - 1, 5000)).toBe(false);
+    expect(acceptRevive(5000 + Math.max(REVIVE_MS, MIN_PULSE_INTERVAL_MS), 5000)).toBe(true);
+    expect(acceptRevive(4000, 5000)).toBe(false);
+  });
+  it('only plays on the Alive lab, and leaves the alarm, reels and dust alone', () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...MOODS), clock, fc.double({ min: 0, max: 3, noNaN: true }), (mood, c, since) => {
+        const look = sceneFrame(mood, c);
+        const revived = withRevive(look, mood, since);
+        if (mood !== 'alive') expect(revived).toEqual(look);
+        const { alarmIntensity, slabGlow, reelSpeed, moteDrift, keyIntensity } = revived;
+        expect({ alarmIntensity, slabGlow, reelSpeed, moteDrift, keyIntensity }).toEqual({
+          alarmIntensity: look.alarmIntensity,
+          slabGlow: look.slabGlow,
+          reelSpeed: look.reelSpeed,
+          moteDrift: look.moteDrift,
+          keyIntensity: look.keyIntensity,
+        });
+      }),
+    );
+  });
+  it('renders at full rate while the revive plays', () => {
+    expect(targetFps('alive', 100, null, 0.5)).toBe(FULL_FPS);
+    expect(targetFps('alive', 100, null, REVIVE_MS / 1000)).toBe(STEADY_FPS);
+    expect(targetFps('buried', 100, null, 0.5)).toBe(STEADY_FPS);
   });
 });
 

@@ -25,6 +25,11 @@ async function showDivergence(result: EquivalenceResult, mutant: string | null, 
   return screen.getByRole('region', { name: 'Counterexample' });
 }
 
+/** The record tables sit in a closed `details` below the Autopsy; open it as a user would. */
+async function openRecordTables(card: HTMLElement) {
+  await userEvent.setup().click(within(card).getByText('Records field by field'));
+  expect(within(card).getByTestId('record-tables')).toHaveAttribute('open');
+}
 /** Table rows as arrays of cell text. */
 function rows(table: HTMLElement): string[][] {
   return within(table)
@@ -52,6 +57,7 @@ describe('counterexample card', () => {
     expect(within(card).getByTestId('counterexample-position')).toHaveTextContent(
       'Record 2 of 2 is the first that differs, at column 25.',
     );
+    await openRecordTables(card);
     const input = within(card).getByRole('table', { name: 'Input record 2 of 2 (IN-REC)' });
     expect(within(input).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Field', 'PIC', 'Value']);
     expect(rows(input)).toEqual([
@@ -80,6 +86,7 @@ describe('counterexample card', () => {
 
   it('marks each differing field in text and shows both values as decimals (5.2)', async () => {
     const card = await showDivergence(HALF_UP_TAX, 'half-up-tax');
+    await openRecordTables(card);
     const output = within(card).getByRole('table', { name: /2 fields differ$/ });
     expect(rows(output)).toEqual([
       ['OUT-EMP-ID', 'X(6)', '"EMP001"', '"EMP001"', 'Same'],
@@ -92,6 +99,7 @@ describe('counterexample card', () => {
 
   it('shows a negative zero against a positive zero as a difference (5.2)', async () => {
     const card = await showDivergence(NEGATIVE_ZERO, null);
+    await openRecordTables(card);
     const output = within(card).getByRole('table', { name: /1 field differs$/ });
     const net = within(output).getByRole('rowheader', { name: 'OUT-NET' }).closest('tr');
     expect([...(net?.querySelectorAll('td') ?? [])].map((td) => td.textContent)).toEqual([
@@ -100,9 +108,21 @@ describe('counterexample card', () => {
       '+0.00',
       '≠ Differs',
     ]);
-    expect(within(card).getByText('No sabotage was planted: the real port differs from COBOL here.')).toBeVisible();
+    expect(within(card).getByTestId('autopsy-cause')).toHaveTextContent(
+      "The port's output differs from COBOL. The COBOL output is the source of truth, so the port is wrong here.",
+    );
   });
 
+  it('puts the Autopsy first and folds the record tables away (9.1, design order)', async () => {
+    const card = await showDivergence(HALF_UP_TAX, 'half-up-tax');
+    const autopsy = within(card).getByRole('region', { name: 'Autopsy' });
+    const details = within(card).getByTestId('record-tables');
+    expect(details).not.toHaveAttribute('open');
+    expect(autopsy.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(autopsy).getByTestId('autopsy-columns')).toHaveTextContent(
+      '2 characters differ: column 25 (COBOL "0", port "1"), column 34 (COBOL "2", port "1").',
+    );
+  });
   it("explains the run's mutant, not the current sabotage selection (5.3)", async () => {
     const card = await showDivergence(HALF_UP_TAX, 'half-up-tax', 'ignore-size-error');
     const explanation = within(card).getByTestId('counterexample-mutant');

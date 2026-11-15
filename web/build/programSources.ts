@@ -2,14 +2,21 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHighlighter, type BundledLanguage, type Highlighter } from 'shiki';
 import type { Plugin } from 'vite';
+import { LAYOUT as INTCALC_LAYOUT } from '../../src/ports/intcalc.layout.ts';
+import { LAYOUT as INVOICE_LAYOUT } from '../../src/ports/invoice.layout.ts';
+import { LAYOUT as PAYROLL_LAYOUT } from '../../src/ports/payroll.layout.ts';
+import type { ProgramId } from '../../src/ports/programs.meta.ts';
+import type { ProgramLayout } from '../../src/semantics/layout.ts';
 import type { HighlightedFile, HighlightedToken, ProgramSource } from '../src/features/program/types.ts';
+import { linkFields } from './fieldLinks.ts';
 import { buildMutants } from './mutantDiffs.ts';
 import { linkStatements } from './statementLinks.ts';
 
 /**
  * Build step for the program view (Requirement 2): highlights each program's COBOL
- * and port with Shiki, links port statements to COBOL statements, and diffs each
- * mutant against the real port (Requirement 4, see ./mutantDiffs.ts). It runs inside
+ * and port with Shiki, links port statements to COBOL statements, maps COBOL data
+ * items to port code (Requirement 6, see ./fieldLinks.ts), and diffs each mutant
+ * against the real port (Requirement 4, see ./mutantDiffs.ts). It runs inside
  * Vite (dev, build and Vitest), so the output is generated in memory and cannot go
  * stale. The browser receives plain token arrays, never the Shiki runtime or HTML.
  */
@@ -58,16 +65,34 @@ function highlight(hl: Highlighter, code: string, lang: BundledLanguage, filePat
 }
 
 /**
+ * Record layouts for the field map, keyed by id so the compiler insists every program
+ * has one. Imported with `.ts` extensions because this module is loaded with the Vite config.
+ */
+const LAYOUTS: Readonly<Record<ProgramId, ProgramLayout>> = {
+  INTCALC: INTCALC_LAYOUT,
+  PAYROLL: PAYROLL_LAYOUT,
+  INVOICE: INVOICE_LAYOUT,
+};
+
+/** The record layout module for a program (`src/ports/<id>.layout.ts`); throws if there is none. */
+export function requireLayout(id: string): ProgramLayout {
+  if (!Object.hasOwn(LAYOUTS, id)) throw new Error(`No record layout for program ${id}`);
+  return LAYOUTS[id as ProgramId];
+}
+
+/**
  * Highlights, links and diffs one program from its source text. Throws on a broken
- * statement link or a mutant without a marker or without a change.
+ * statement link, a broken field mapping, or a mutant without a marker or without a change.
  */
 export async function buildProgramSource(
   files: ProgramFiles,
   cobolSource: string,
   portSource: string,
   mutantsSource: string,
+  layout: ProgramLayout,
 ): Promise<ProgramSource> {
   const links = linkStatements(cobolSource, portSource, files.portPath);
+  const fields = linkFields(cobolSource, portSource, layout, files.portPath);
   const hl = await getHighlighter();
   const mutants = buildMutants(
     { portPath: files.portPath, portSource, mutantsPath: files.mutantsPath, mutantsSource },
@@ -83,27 +108,37 @@ export async function buildProgramSource(
     port: port.file,
     links,
     mutants,
+    fields,
   };
 }
 
-export async function readProgramSource(repoRoot: string, files: ProgramFiles): Promise<ProgramSource> {
+export async function readProgramSource(
+  repoRoot: string,
+  files: ProgramFiles,
+  layout: ProgramLayout = requireLayout(files.id),
+): Promise<ProgramSource> {
   const [cobolSource, portSource, mutantsSource] = await Promise.all(
     [files.cobolPath, files.portPath, files.mutantsPath].map((p) => readFile(path.join(repoRoot, p), 'utf8')),
   );
-  return buildProgramSource(files, cobolSource!, portSource!, mutantsSource!);
+  return buildProgramSource(files, cobolSource!, portSource!, mutantsSource!, layout);
 }
 
 export interface ProgramSourcesOptions {
   readonly repoRoot: string;
   readonly programIds: readonly string[];
+  /** Record layouts by program id. Defaults to the `src/ports/<id>.layout.ts` modules. */
+  readonly layouts?: Readonly<Record<string, ProgramLayout>>;
 }
 
 /**
  * `virtual:lazarus/program-sources` exports `loaders`, one dynamic import per program,
  * so each program's highlighted source is its own chunk, fetched only on its route.
  */
-export function programSourcesPlugin({ repoRoot, programIds }: ProgramSourcesOptions): Plugin {
+export function programSourcesPlugin({ repoRoot, programIds, layouts }: ProgramSourcesOptions): Plugin {
   const programs = new Map(programIds.map((id) => [id, programFiles(id)]));
+  const layoutOf = (id: string) =>
+    layouts !== undefined && Object.hasOwn(layouts, id) ? layouts[id]! : requireLayout(id);
+  const read = (files: ProgramFiles) => readProgramSource(repoRoot, files, layoutOf(files.id));
   const sourcePaths = new Map(
     [...programs.values()].flatMap((files) =>
       [files.cobolPath, files.portPath, files.mutantsPath].map((p) => [path.join(repoRoot, p), files.id] as const),
@@ -114,7 +149,7 @@ export function programSourcesPlugin({ repoRoot, programIds }: ProgramSourcesOpt
     name: 'lazarus-program-sources',
     async buildStart() {
       // Fail fast on dev start, build and test, not only when a program route is opened.
-      await Promise.all([...programs.values()].map((files) => readProgramSource(repoRoot, files)));
+      await Promise.all([...programs.values()].map(read));
     },
     resolveId(id) {
       if (id === INDEX_ID) return `\0${id}`;
@@ -134,7 +169,7 @@ export function programSourcesPlugin({ repoRoot, programIds }: ProgramSourcesOpt
       this.addWatchFile(path.join(repoRoot, files.cobolPath));
       this.addWatchFile(path.join(repoRoot, files.portPath));
       this.addWatchFile(path.join(repoRoot, files.mutantsPath));
-      const source = await readProgramSource(repoRoot, files);
+      const source = await read(files);
       return `export default ${JSON.stringify(source)};\n`;
     },
     configureServer(server) {
