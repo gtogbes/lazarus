@@ -39,6 +39,13 @@ describe('demoScript', () => {
     }
   });
 
+  it('does not announce a result in the caption of a step that is still replaying it', () => {
+    // The caption shows from the step's start, while the proof is at 0 cases.
+    for (const step of DEMO_SCRIPT.filter((s) => stepRecording(s) !== null)) {
+      expect(step.caption).not.toMatch(/every case matches,? (so|and)\b|\bhas Relapsed\b|\bflatlines\b/i);
+    }
+  });
+
   it('fits each replay inside its step at its rate', () => {
     for (const step of DEMO_SCRIPT) {
       const recording = stepRecording(step);

@@ -18,6 +18,8 @@
  * recordings show (13): the half-up-tax counterexample differs from COBOL by one
  * penny in the 0.01 place of OUT-TAX and OUT-NET, not in a high-order digit.
  * They carry no counts: the numbers on screen come from the run itself (13.1).
+ * A replaying step's caption shows from the step's start, before the replay
+ * reaches its result, so it says what the step checks, not how it ends.
  */
 import { recordingFileName } from '../proof/recording';
 import type { ProofTarget } from '../proof/useProofRun';
@@ -101,7 +103,7 @@ export const DEMO_SCRIPT: readonly DemoStep[] = [
   },
   {
     id: 'prove-real',
-    caption: 'Proving the real port: a recorded run feeds the same generated records to GnuCOBOL and the port. Every case matches, so the port is Alive.',
+    caption: 'Proving the real port: a recorded run feeds the same generated records to GnuCOBOL and the port. If every case matches, the port is Alive.',
     durationMs: 40_000,
     action: { kind: 'replay', target: REAL, rate: PROOF_RATE, expect: 'alive' },
     cues: [{ atMs: 0, cue: { kind: 'vitals' } }],
@@ -115,7 +117,7 @@ export const DEMO_SCRIPT: readonly DemoStep[] = [
   },
   {
     id: 'prove-mutant',
-    caption: 'Proving the sabotaged port: a generated record makes it disagree with COBOL, so the heartbeat flatlines and the port has Relapsed.',
+    caption: 'Proving the sabotaged port: the same check on generated records. One record that disagrees with COBOL is enough to flatline the heartbeat and mark the port Relapsed.',
     durationMs: 6_000,
     action: { kind: 'replay', target: MUTANT, rate: PROOF_RATE, expect: 'relapsed' },
     cues: [{ atMs: 0, cue: { kind: 'vitals' } }],
@@ -139,7 +141,7 @@ export const DEMO_SCRIPT: readonly DemoStep[] = [
   },
   {
     id: 'revive',
-    caption: 'Revive: back to the real port, proved again from its recording. Every case matches, and the port is Alive again.',
+    caption: 'Revive: back to the real port, proved again from its recording. If every case matches, the port is Alive again.',
     durationMs: 20_000,
     action: { kind: 'revive', program: DEMO_PROGRAM, rate: REVIVE_RATE },
     cues: [{ atMs: 0, cue: { kind: 'vitals' } }],
