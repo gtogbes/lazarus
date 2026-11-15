@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 // it pulls fast-check and the ports into the initial bundle.
 import { PROGRAM_META, type ProgramMeta } from '../../../../src/ports/programs.meta';
 import { PANEL } from '../../app/surface';
+import { DemoButton } from '../demo/DemoButton';
 import { useSceneNudge } from '../../scene/sceneNudge';
 import type { RecordedProof } from './recordedProof';
 import { useRecordedProofs } from './useRecordedProofs';
@@ -40,6 +41,11 @@ export function MorguePage() {
           <ProgramCard key={program.id} program={program} proof={proofs[program.id]} index={index} />
         ))}
       </ul>
+      {/* After the cards, so the programs stay first in the tab order. */}
+      <p className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-zinc-300">
+        <DemoButton />
+        <span>A two-minute guided replay of recorded proofs of PAYROLL.</span>
+      </p>
     </section>
   );
 }

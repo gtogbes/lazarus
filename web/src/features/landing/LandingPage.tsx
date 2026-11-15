@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { PANEL } from '../../app/surface';
+import { DemoButton } from '../demo/DemoButton';
 
 /**
  * Full-screen hero over the lab scene (AppShell's background layer). The 2D
@@ -16,12 +17,15 @@ export function LandingPage() {
         <p className="mx-auto mt-4 max-w-prose text-lg text-zinc-300">
           Legacy COBOL, ported to TypeScript and proven equivalent against real GnuCOBOL.
         </p>
-        <Link
-          to="/morgue"
-          className="mt-8 inline-block rounded bg-amber-300 px-6 py-3 text-lg font-semibold text-zinc-950 hover:bg-amber-200 motion-safe:transition-colors"
-        >
-          Enter the morgue
-        </Link>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+          <Link
+            to="/morgue"
+            className="inline-block rounded bg-amber-300 px-6 py-3 text-lg font-semibold text-zinc-950 hover:bg-amber-200 motion-safe:transition-colors"
+          >
+            Enter the morgue
+          </Link>
+          <DemoButton className="py-3 text-lg" />
+        </div>
       </div>
     </section>
   );
