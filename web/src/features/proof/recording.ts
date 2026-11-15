@@ -96,23 +96,46 @@ export function parseRecording(value: unknown, expected?: RecordingTarget): Reco
 }
 
 /**
- * Fetch and validate a recording. Resolves null when there is none or it is
- * invalid (a missing file on the dev server comes back as index.html, which is
- * not JSON). Aborts propagate.
+ * How long a recording may take to arrive. Recordings are a few tens of KB from
+ * the same origin; a server that accepts the request and never answers (a
+ * stopped dev server, a stuck proxy) would otherwise leave the replay waiting
+ * for ever.
  */
-export async function fetchRecording(target: RecordingTarget, signal?: AbortSignal): Promise<Recording | null> {
-  let response: Response;
+export const RECORDING_TIMEOUT_MS = 10_000;
+
+/**
+ * Fetch and validate a recording. Resolves null when there is none, it is
+ * invalid (a missing file on the dev server comes back as index.html, which is
+ * not JSON), or it has not fully arrived within `timeoutMs`. Aborts of `signal`
+ * propagate.
+ */
+export async function fetchRecording(
+  target: RecordingTarget,
+  signal?: AbortSignal,
+  timeoutMs = RECORDING_TIMEOUT_MS,
+): Promise<Recording | null> {
+  const request = new AbortController();
+  const stop = () => request.abort();
+  if (signal?.aborted) stop();
+  signal?.addEventListener('abort', stop, { once: true });
+  const timer = setTimeout(stop, timeoutMs);
   try {
-    response = await fetch(recordingUrl(target), signal ? { signal } : {});
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return null;
-  }
-  if (!response.ok) return null;
-  try {
-    return parseRecording(await response.json(), target);
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return null;
+    let response: Response;
+    try {
+      response = await fetch(recordingUrl(target), { signal: request.signal });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      return null;
+    }
+    if (!response.ok) return null;
+    try {
+      return parseRecording(await response.json(), target);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      return null;
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', stop);
   }
 }

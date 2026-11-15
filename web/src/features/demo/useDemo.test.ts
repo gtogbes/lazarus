@@ -143,6 +143,32 @@ describe('useDemo', () => {
     expect(proof().status).toBe('idle');
   });
 
+  it('replays the recordings it checked, so a server that stops answering after the load cannot stall a step', async () => {
+    // Each file is served once; any later request is accepted and never answered (a stopped dev server).
+    const served = new Set<string>();
+    const urls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        urls.push(url);
+        const file = url.replace(/^\/recorded\//, '');
+        if (!served.has(file)) {
+          served.add(file);
+          return Promise.resolve(jsonResponse(200, committed(file)));
+        }
+        return new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+      }),
+    );
+    const done = demo().run();
+    await advance(31_000); // 1 s into prove-real: the replay already knows the run
+    expect(proof()).toMatchObject({ status: 'reanimating', run: { numRuns: 2000 } });
+    await advance(100_000);
+    await done;
+    expect(demo()).toMatchObject({ running: false, done: true, error: null });
+    expect(proof().status).toBe('alive');
+    expect(urls).toHaveLength(2);
+  });
+
   it('stops before the first step and names a missing recording (11.11)', async () => {
     serveRecorded(['PAYROLL.half-up-tax.json']);
     await demo().run();

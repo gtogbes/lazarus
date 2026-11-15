@@ -22,12 +22,14 @@
  * makes the page's active clock so the Visuals slow down and pause with it. A
  * rate alone gets a fresh clock. Every other run, and `reset`, clears the active
  * clock. With no options the replay keeps its plain timers (Requirement 6).
+ * `{ recording }` replays a recording the caller already loaded instead of
+ * fetching it again (Demo_Mode).
  *
  * `revive` (graphical-proof Requirement 10.2) selects "No sabotage" and proves
  * the real port live, also when the relapsed run was a recorded replay. Only if
  * that live run ends in `error` does it replay the recorded proof of the real
  * port. With `{ recorded: true }` (Demo_Mode, Requirement 11.3) it replays the
- * recording directly and never calls the Proof_API; `rate` or `clock` imply it
+ * recording directly and never calls the Proof_API; `rate`, `clock` or `recording` imply it
  * and go to `replayRecorded`. While it runs,
  * `revival.pending` is true; when it ends Alive, `revival.revivedAt` is set (the
  * shock pulse and the scene's revive mood key off it). Any other outcome leaves
@@ -61,7 +63,7 @@ import type { EquivalenceResult, ProofPhase } from '../../../../src/harness/equi
 import { applyProgress, finalizeProgress, INITIAL_PROGRESS_STATE, type ProgressState } from './progressModel';
 import { ProveRequestError, streamProve } from './proveClient';
 import { createPlaybackClock, setActivePlaybackClock, type PlaybackClock } from './playbackClock';
-import { fetchRecording } from './recording';
+import { fetchRecording, type Recording } from './recording';
 
 export type ProofStatus = 'idle' | 'reanimating' | 'alive' | 'relapsed' | 'error' | 'cancelled';
 
@@ -98,6 +100,12 @@ export interface ReplayOptions {
   readonly rate?: number;
   /** The clock to replay on; it becomes the active clock. Default: a new clock at `rate`. */
   readonly clock?: PlaybackClock;
+  /**
+   * The recording for the target, already fetched and checked (Demo_Mode loads
+   * them all before its first step). Replayed without fetching it again, so the
+   * replay does not depend on the server still answering, and `run` is set at once.
+   */
+  readonly recording?: Recording;
 }
 export interface ReviveOptions extends ReplayOptions {
   /** Replay the recording without calling the Proof_API (Demo_Mode, Requirement 11.3). Implied by `rate` or `clock`. */
@@ -292,7 +300,7 @@ export const useProofRun = create<ProofRunState>()((set, get) => ({
       if (current()) set({ status: 'error', error: { kind: 'recorded', message: NO_RECORDING } });
     };
     try {
-      const recording = await fetchRecording({ program, mutant }, own.signal);
+      const recording = options.recording ?? (await fetchRecording({ program, mutant }, own.signal));
       if (!recording) {
         fail();
         return;
@@ -330,8 +338,9 @@ export const useProofRun = create<ProofRunState>()((set, get) => ({
     // Still this revive's run: no newer revive, and no other run or reset cleared `pending`.
     const mine = () => token === reviveToken && get().revival.pending;
     // `start` and `replayRecorded` reset the store synchronously, so mark pending after the call.
-    const recorded = options.recorded === true || options.rate !== undefined || options.clock !== undefined;
-    // `replayRecorded` only reads `rate` and `clock`.
+    const recorded =
+      options.recorded === true || options.rate !== undefined || options.clock !== undefined || options.recording !== undefined;
+    // `replayRecorded` only reads `rate`, `clock` and `recording`.
     const run = recorded ? get().replayRecorded({ program, mutant: null }, options) : get().start(program);
     set({ revival: REVIVE_PENDING });
     await run;

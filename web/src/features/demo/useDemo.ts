@@ -7,8 +7,10 @@
  *   origin, `recorded/<file>`, through `fetchRecording`), so a missing or invalid
  *   one stops the demo before it starts and is named in `error` (11.11). It also
  *   keeps each recording's date and real duration for the labels (11.4, 11.5).
+ *   The steps replay the recordings it checked rather than fetching them again,
+ *   so once the demo has started it needs nothing more from the server.
  *   Nothing here calls the Proof_API (11.3): replays use `replayRecorded`, and
- *   the revive uses `revive({ clock })`, which replays the recording.
+ *   the revive uses `revive({ clock, recording })`, which replays the recording.
  * - Each step gets its own clock at the step's rate (1 when it replays
  *   nothing). The step's hold and cues run on it in display time, and a replay
  *   or revive runs on it too, which makes it the page's active clock. The next
@@ -127,6 +129,8 @@ interface Session {
   clock: DemoClock | null;
   /** Ends the current step's hold at once. */
   endHold: (() => void) | null;
+  /** The recordings `load` checked, by `DemoRecording.file`. The steps replay these, not a second fetch. */
+  recordings: ReadonlyMap<string, Recording>;
 }
 let session: Session | null = null;
 
@@ -175,6 +179,7 @@ export const useDemo = create<DemoState>()((set, get) => {
     );
     if (session !== own) return false;
     const recordings: Record<string, DemoRecordingInfo> = {};
+    const checked = new Map<string, Recording>();
     for (const [i, recording] of needed.entries()) {
       const found = loaded[i];
       if (!found) {
@@ -186,13 +191,18 @@ export const useDemo = create<DemoState>()((set, get) => {
         return false;
       }
       recordings[recording.file] = { recordedAt: found.result.generatedAt, durationMs: found.result.durationMs };
+      checked.set(recording.file, found);
     }
+    own.recordings = checked;
     set({ recordings });
     return true;
   }
 
-  async function perform(step: DemoStep, clock: DemoClock): Promise<void> {
+  async function perform(own: Session, step: DemoStep, clock: DemoClock): Promise<void> {
     const { action } = step;
+    const file = stepRecording(step)?.file;
+    const recording = file === undefined ? undefined : own.recordings.get(file);
+    const options = recording ? { clock, recording } : { clock };
     switch (action.kind) {
       case 'hold':
         return;
@@ -200,10 +210,10 @@ export const useDemo = create<DemoState>()((set, get) => {
         proof().selectMutant(action.mutant);
         return;
       case 'replay':
-        await proof().replayRecorded(action.target, { clock });
+        await proof().replayRecorded(action.target, options);
         return;
       case 'revive':
-        await proof().revive({ clock });
+        await proof().revive(options);
         return;
     }
   }
@@ -228,7 +238,7 @@ export const useDemo = create<DemoState>()((set, get) => {
         resolve();
       };
     });
-    await Promise.all([held, perform(step, clock)]);
+    await Promise.all([held, perform(own, step, clock)]);
     for (const cancel of cancels) cancel();
     own.endHold = null;
     if (session !== own) return false;
@@ -256,7 +266,7 @@ export const useDemo = create<DemoState>()((set, get) => {
     async run(script = DEMO_SCRIPT) {
       stop();
       proof().reset();
-      const own: Session = { loading: new AbortController(), clock: null, endHold: null };
+      const own: Session = { loading: new AbortController(), clock: null, endHold: null, recordings: new Map() };
       session = own;
       set({ ...IDLE, running: true, script });
       if (!(await load(own, script))) return;

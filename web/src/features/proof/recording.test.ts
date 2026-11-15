@@ -1,10 +1,19 @@
 import fc from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EquivalenceResult, ShrinkStep } from '../../../../src/harness/equivalence.types';
 import { MAX_SHRINK_STEPS } from '../../../../src/harness/shrinkPath';
 import V1_FIXTURE from './fixtures/PAYROLL.half-up-tax.v1.json';
 import { applyProgress, finalizeProgress, INITIAL_PROGRESS_STATE } from './progressModel';
-import { MAX_RECORDED_EVENTS, parseRecording, RECORDING_VERSIONS, recordingFileName, recordingUrl } from './recording';
+import {
+  fetchRecording,
+  MAX_RECORDED_EVENTS,
+  parseRecording,
+  RECORDING_TIMEOUT_MS,
+  RECORDING_VERSIONS,
+  recordingFileName,
+  recordingUrl,
+  type Recording,
+} from './recording';
 import { DIVERGED_RESULT, EQUIVALENT_RESULT, recordingOf } from './testing';
 
 const VALID = recordingOf(EQUIVALENT_RESULT, {
@@ -264,5 +273,43 @@ describe.skipIf(shipped.length === 0)('shipped recordings', () => {
   it.each(shipped)('%s parses as the recording its name says', (name, value) => {
     const [program = '', mutant] = name.replace(/\.json$/, '').split('.');
     expect(parseRecording(value, { program, mutant: mutant ?? null })).not.toBeNull();
+  });
+});
+
+describe('fetchRecording', () => {
+  /** A server that accepts the request and never answers; the request ends only when aborted. */
+  function stubSilentServer() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise<Response>((_, reject) =>
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))),
+          ),
+      ),
+    );
+  }
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('gives up on a server that never answers, so a replay ends instead of waiting for ever', async () => {
+    vi.useFakeTimers();
+    stubSilentServer();
+    let settled: Recording | null | 'pending' = 'pending';
+    void fetchRecording({ program: 'PAYROLL' }).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(RECORDING_TIMEOUT_MS - 1);
+    expect(settled).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBeNull();
+  });
+
+  it("still rejects when the caller's signal aborts", async () => {
+    stubSilentServer();
+    const caller = new AbortController();
+    const pending = fetchRecording({ program: 'PAYROLL' }, caller.signal);
+    caller.abort();
+    await expect(pending).rejects.toThrow('aborted');
   });
 });

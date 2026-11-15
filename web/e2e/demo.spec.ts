@@ -248,6 +248,45 @@ test.describe('demo at 1920×1080, motion on', () => {
     expect(elapsed).toBeLessThanOrEqual(136_000);
   });
 
+  test('needs nothing more from the server once it has started, and draws the empty grid at once', async ({ page }) => {
+    // A dev server stopped mid-demo accepts requests and never answers. From the first step
+    // on, every recording request here does the same.
+    let started = false;
+    const late: string[] = [];
+    await page.route(/\/recorded\//, (route) => {
+      if (!started) return route.continue();
+      late.push(route.request().url());
+      return undefined; // never answered
+    });
+    await page.goto('/program/PAYROLL?demo=1');
+    const { bar, grid, status } = parts(page);
+    await expect(bar).toHaveAttribute('data-demo-step', 'program', { timeout: 15_000 });
+    started = true;
+    await bar.getByRole('button', { name: 'Pause' }).click();
+    const skip = bar.getByRole('button', { name: 'Skip step' });
+    await skip.click();
+    await expect(bar).toHaveAttribute('data-demo-step', 'stitches');
+    await skip.click();
+    // Paused at the start of prove-real: no case has run, and all 2,000 cells are drawn as not run.
+    await expect(bar).toHaveAttribute('data-demo-step', 'prove-real');
+    await expect(grid).toHaveAttribute('data-not-run', '2000');
+    await expect(grid).toHaveAttribute('data-passed', '0');
+    const painted = await page.getByTestId('case-grid-canvas').evaluate((canvas: HTMLCanvasElement) => {
+      const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+      let opaque = 0;
+      for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) opaque++;
+      return opaque;
+    });
+    expect(painted, 'grey not-run cells on the canvas').toBeGreaterThan(0);
+    await bar.getByRole('button', { name: 'Resume' }).click();
+    for (const [id] of STEPS.slice(2)) {
+      await expect(bar).toHaveAttribute('data-demo-step', id);
+      await skip.click();
+    }
+    await expect(bar).toHaveAttribute('data-demo-state', 'done');
+    await expect(status).toHaveText('Alive');
+    expect(late, 'recording requests after the demo started').toEqual([]);
+  });
   test('Pause, Resume and Exit work from the keyboard', async ({ page }) => {
     await page.goto('/program/PAYROLL?demo=1');
     const { bar, heartbeat } = parts(page);
