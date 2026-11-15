@@ -44,6 +44,7 @@ import {
   PointsMaterial,
   Scene,
   SpotLight,
+  Texture,
   Timer,
   WebGLRenderer,
   type Material,
@@ -313,7 +314,9 @@ function startLab(canvas: HTMLCanvasElement, fail: (error: unknown) => void): ()
   };
 
   // Our own loop, timed by THREE.Timer; nothing renders while the tab is hidden.
+  // `connect` also zeroes the timer's delta while the page is hidden (Page Visibility API).
   const timer = new Timer();
+  timer.connect(document);
   let frame: number | undefined;
   const tick = (timestamp: number) => {
     frame = requestAnimationFrame(tick);
@@ -397,7 +400,10 @@ interface LabStage {
   /** The GLB plus the runtime lights and motes, as one group. */
   readonly root: Group;
   animate(mood: SceneMood, dt: number, casesPerSec: number, sinceNudgeSec: number | null, sinceReviveSec: number | null): void;
-  /** Frees what this stage created. The GLB stays loaded (and cached) for a later mount. */
+  /**
+   * Frees what this stage created, and the GPU copies of the GLB's geometries, materials
+   * and textures. The GLB's CPU-side scene stays cached for a later mount (see `disposeGpuCopies`).
+   */
   dispose(): void;
 }
 
@@ -469,10 +475,31 @@ function createLabStage(rig: LabRig, renderer: WebGLRenderer): LabStage {
         m.needsUpdate = true;
       }
       env.dispose();
+      disposeGpuCopies(rig.root);
       for (const light of [ambient, key, ...arcs, alarmLight]) light.dispose();
       motes.dispose();
     },
   };
+}
+
+/**
+ * Fires `dispose` on every geometry, material and texture under `root`, so the renderer
+ * frees their GPU copies and drops the `dispose` listeners it added to them. Without this,
+ * the cached GLB's materials keep that listener after `renderer.dispose()`, and with it the
+ * old renderer and its WebGL context, on every re-mount. `dispose()` leaves the CPU-side
+ * data (attribute arrays, decoded images) alone, so the next mount's renderer uploads it again.
+ */
+function disposeGpuCopies(root: Object3D): void {
+  const resources = new Set<BufferGeometry | Material | Texture>();
+  root.traverse((o) => {
+    if (!(o instanceof Mesh)) return;
+    resources.add(o.geometry);
+    for (const m of ([] as Material[]).concat(o.material)) {
+      resources.add(m);
+      for (const value of Object.values(m)) if (value instanceof Texture) resources.add(value);
+    }
+  });
+  for (const resource of resources) resource.dispose();
 }
 
 function createMotes(): { readonly group: Group; dispose(): void } {
