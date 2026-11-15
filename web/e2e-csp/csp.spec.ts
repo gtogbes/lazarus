@@ -51,6 +51,12 @@ test('every response carries the CloudFront security headers; deep links get the
 
   expect((await request.get('/assets/does-not-exist.js')).status()).toBe(404);
   expect((await request.get('/recorded/NOPE.json')).status()).toBe(404);
+
+  // The icon index.html links (img-src 'self'), so browsers do not ask for /favicon.ico.
+  expect(html).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" />');
+  const icon = await request.get('/favicon.svg');
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()['content-type']).toContain('image/svg+xml');
 });
 
 test('no CSP violations: landing scene with decoders, deep-linked program view, a live proof', async ({ page }) => {
