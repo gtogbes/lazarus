@@ -1,10 +1,19 @@
 import fc from 'fast-check';
 import { GNUCOBOL_IMAGE, type CobolSession } from './cobol.js';
 import { compareOutputs, type Comparison } from './compare.js';
+import { INITIAL_PROGRESS, nextProgress } from './progress.js';
+import { ShrinkRecorder } from './shrinkPath.js';
 
 import type { Counterexample, EquivalenceResult, Progress } from './equivalence.types.js';
 
-export type { Counterexample, EquivalenceResult, Progress } from './equivalence.types.js';
+export type {
+  Counterexample,
+  EquivalenceResult,
+  ProofPhase,
+  Progress,
+  ShrinkPath,
+  ShrinkStep,
+} from './equivalence.types.js';
 
 export type Port = (record: string) => string;
 
@@ -73,7 +82,9 @@ function divergence(records: readonly string[], cobol: string[], port: string[],
  */
 export async function checkEquivalence(options: EquivalenceOptions): Promise<EquivalenceResult> {
   const { signal } = options;
-  const progress = { executions: 0, divergences: 0 };
+  let progress: Progress = INITIAL_PROGRESS;
+  // Every divergence is one of fast-check's failures: the first, then each accepted shrink.
+  const shrinkRecorder = new ShrinkRecorder();
   const numRuns = envInt('LAZARUS_RUNS') ?? options.numRuns ?? 1000;
   const seed = envInt('LAZARUS_SEED') ?? options.seed ?? Date.now() ^ (Math.random() * 0x100000000);
   const started = performance.now();
@@ -87,10 +98,12 @@ export async function checkEquivalence(options: EquivalenceOptions): Promise<Equ
       if (cobol === ABORTED) throw new fc.PreconditionFailure(true);
       const port = records.map(options.port);
       const diff = compareOutputs(cobol, port);
-      progress.executions++;
-      if (!diff.equal) progress.divergences++;
-      options.onProgress?.({ ...progress });
-      if (!diff.equal) throw divergence(records, cobol, port, diff);
+      progress = nextProgress(progress, !diff.equal);
+      options.onProgress?.(progress);
+      if (!diff.equal) {
+        shrinkRecorder.push({ records, line: diff.line });
+        throw divergence(records, cobol, port, diff);
+      }
     },
   );
 
@@ -110,7 +123,15 @@ export async function checkEquivalence(options: EquivalenceOptions): Promise<Equ
     return { ...base, status: 'equivalent' };
   }
   if (details.errorInstance instanceof DivergenceError) {
-    return { ...base, status: 'diverged', counterexample: details.errorInstance.counterexample };
+    // On a truncated run this is the path reached when the signal stopped shrinking.
+    // Undefined when the counterexample alone exceeds the byte cap (Requirement 2.3).
+    const shrinkPath = shrinkRecorder.path();
+    return {
+      ...base,
+      status: 'diverged',
+      counterexample: details.errorInstance.counterexample,
+      ...(shrinkPath ? { shrinkPath } : {}),
+    };
   }
   throw details.errorInstance instanceof Error
     ? details.errorInstance

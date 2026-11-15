@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { pic } from './decimal.js';
-import { compareRecords, decodeRecord, parsePicture, recordLayout } from './layout.js';
+import { compareRecords, decodeRecord, parseNumericPicture, parsePicture, recordLayout } from './layout.js';
 
 describe('parsePicture', () => {
   it('reads alphanumeric fields', () => {
@@ -27,6 +27,44 @@ describe('parsePicture', () => {
     expect(() => parsePicture('Z(5)9')).toThrow(SyntaxError);
     expect(() => parsePicture('9V9V9')).toThrow(SyntaxError);
     expect(() => parsePicture('X(2)9')).toThrow(SyntaxError);
+  });
+});
+
+describe('parseNumericPicture', () => {
+  it('reads the working-storage PICs of the sample programs', () => {
+    expect(parseNumericPicture('9(2)V9(4)')).toEqual(pic(2, 4, false)); // INTCALC WS-RATE
+    expect(parseNumericPicture('S9(7)V99')).toEqual(pic(7, 2, true)); // INTCALC WS-INTEREST
+    expect(parseNumericPicture('S9(9)V99')).toEqual(pic(9, 2, true)); // INTCALC WS-NEW-BAL
+    expect(parseNumericPicture('9(7)V99')).toEqual(pic(7, 2, false)); // INVOICE WS-LINE
+    expect(parseNumericPicture('9(2)V9')).toEqual(pic(2, 1, false)); // INVOICE WS-VAT-RATE
+    expect(parseNumericPicture('9(2)V99   COMP-3')).toEqual(pic(2, 2, false)); // PAYROLL WS-OT-HOURS
+    expect(parseNumericPicture('9(5)V99 COMP-3')).toEqual(pic(5, 2, false)); // PAYROLL WS-GROSS
+    expect(parseNumericPicture('S9(5)V99  COMP-3')).toEqual(pic(5, 2, true)); // PAYROLL WS-NET
+  });
+  it('reads record PICs with a separate sign the same way as parsePicture', () => {
+    for (const p of ['S9(9)V99 SIGN LEADING SEPARATE', '9(3)', '9(5)V99', 'S9(5)V99 SIGN IS LEADING SEPARATE CHARACTER']) {
+      const parsed = parsePicture(p).type;
+      expect(parsed.kind).toBe('numeric');
+      if (parsed.kind === 'numeric') expect(parseNumericPicture(p)).toEqual(parsed.pic);
+    }
+  });
+  it('accepts the other spellings of packed and display usage', () => {
+    expect(parseNumericPicture('s9(5)v99 usage is comp-3')).toEqual(pic(5, 2, true));
+    expect(parseNumericPicture('9(5)V99 PACKED-DECIMAL')).toEqual(pic(5, 2, false));
+    expect(parseNumericPicture('9(5)V99 COMPUTATIONAL-3')).toEqual(pic(5, 2, false));
+    expect(parseNumericPicture('S9(5) USAGE DISPLAY')).toEqual(pic(5, 0, true));
+  });
+  it('rejects pictures that are not numeric or not supported', () => {
+    expect(() => parseNumericPicture('X(8)')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('X')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('9(5)V99 SIGN LEADING SEPARATE')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('S9(5)V99 SIGN LEADING SEPARATE COMP-3')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('9(5) COMP')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('9(5)V99 VALUE 0')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('9V9V9')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('Z(5)9')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('S')).toThrow(SyntaxError);
+    expect(() => parseNumericPicture('V')).toThrow(SyntaxError);
   });
 });
 

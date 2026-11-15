@@ -5,6 +5,8 @@
  *
  * Only the DISPLAY usages the sample programs put in their records are
  * supported: X(n), 9(n)V9(n), and S9(n)V9(n) SIGN LEADING SEPARATE.
+ * `parseNumericPicture` also reads working-storage PICs (embedded sign,
+ * COMP-3) for the field map, without a storage width.
  */
 import { pic, type Pic } from './decimal.js';
 
@@ -91,6 +93,34 @@ export function parsePicture(picture: string): { type: FieldType; length: number
     type: { kind: 'numeric', pic: pic(nines, scale, signed) },
     length: nines + scale + (signed ? 1 : 0),
   };
+}
+
+const USAGE = /\s+(?:USAGE\s+(?:IS\s+)?)?(COMP-3|COMPUTATIONAL-3|PACKED-DECIMAL|DISPLAY)$/;
+
+/**
+ * Read a numeric PIC into its digits, scale and sign, whatever its storage.
+ * Unlike `parsePicture` this accepts working-storage items: an embedded sign
+ * (`S9(7)V99`) and packed decimal (`9(5)V99 COMP-3`), as well as the
+ * `SIGN LEADING SEPARATE` record fields. Storage width is not returned, so
+ * this is for matching PICs to ports (the field map), not for decoding records.
+ */
+export function parseNumericPicture(picture: string): Pic {
+  const text = picture.trim().toUpperCase().replace(/\s+/g, ' ');
+  const usage = USAGE.exec(text)?.[1];
+  let body = text.replace(USAGE, '');
+  const signSeparate = SIGN_SEPARATE.test(body);
+  body = body.replace(SIGN_SEPARATE, '');
+  const signed = body.startsWith('S');
+  if (signed) body = body.slice(1);
+  if (signSeparate && !signed) {
+    throw new SyntaxError(`SIGN SEPARATE needs an S in PIC "${picture}"`);
+  }
+  if (signSeparate && usage !== undefined && usage !== 'DISPLAY') {
+    throw new SyntaxError(`SIGN SEPARATE needs DISPLAY usage: "${picture}"`);
+  }
+  const { x, nines, scale } = countSymbols(body, picture);
+  if (x > 0 || nines + scale === 0) throw new SyntaxError(`Not a numeric PIC: "${picture}"`);
+  return pic(nines, scale, signed);
 }
 
 /** Lay fields out one after another, as COBOL does for a group item. */
