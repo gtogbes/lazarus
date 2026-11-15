@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "events": [
     {
       "type": "started",
@@ -11,20 +11,110 @@
     },
     {
       "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 23
+    },
+    {
+      "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 44
+    },
+    {
+      "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 65
+    },
+    {
+      "type": "progress",
+      "executions": 47,
+      "divergences": 0,
+      "cases": 47,
+      "phase": "generating",
+      "elapsedMs": 85
+    },
+    {
+      "type": "progress",
+      "executions": 117,
+      "divergences": 7,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 105
+    },
+    {
+      "type": "progress",
+      "executions": 194,
+      "divergences": 8,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 125
+    },
+    {
+      "type": "progress",
+      "executions": 265,
+      "divergences": 10,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 145
+    },
+    {
+      "type": "progress",
+      "executions": 342,
+      "divergences": 11,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 165
+    },
+    {
+      "type": "progress",
+      "executions": 420,
+      "divergences": 13,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 185
+    },
+    {
+      "type": "progress",
+      "executions": 487,
+      "divergences": 14,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 205
+    },
+    {
+      "type": "progress",
+      "executions": 567,
+      "divergences": 16,
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 225
+    },
+    {
+      "type": "progress",
       "executions": 636,
       "divergences": 17,
-      "elapsedMs": 204
+      "cases": 86,
+      "phase": "shrinking",
+      "elapsedMs": 243
     },
     {
       "type": "result",
       "result": {
         "program": "INVOICE",
         "reference": "lazarus-gnucobol:3.1.2",
-        "generatedAt": "2026-11-09T11:30:12.960Z",
+        "generatedAt": "2026-11-12T12:53:24.326Z",
         "seed": 20261204,
         "cases": 86,
         "shrinks": 16,
-        "durationMs": 202,
+        "durationMs": 240,
         "status": "diverged",
         "counterexample": {
           "records": [
@@ -41,6 +131,155 @@
           ],
           "line": 0,
           "column": 38
+        },
+        "shrinkPath": {
+          "total": 17,
+          "steps": [
+            {
+              "step": 0,
+              "records": [
+                "63MFY100050777822373Z",
+                "5MPJ0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 1
+            },
+            {
+              "step": 1,
+              "records": [
+                "5MPJ0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 2,
+              "records": [
+                "0MPJ0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 3,
+              "records": [
+                "0APJ0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 4,
+              "records": [
+                "0AAJ0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 5,
+              "records": [
+                "0AAA0E94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 6,
+              "records": [
+                "0AAA0A94748218791535S",
+                "48YW5C04174131216794S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 7,
+              "records": [
+                "0AAA0A94748218791535S",
+                "9120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 8,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0120FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 9,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0020FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 10,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000FI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 11,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AI02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 12,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AA02451448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 13,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AA00001448026212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 14,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AA00000000000212s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 15,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AA00000000000000s"
+              ],
+              "line": 0
+            },
+            {
+              "step": 16,
+              "records": [
+                "0AAA0A94748218791535S",
+                "0000AA00000000000000S"
+              ],
+              "line": 0
+            }
+          ]
         }
       }
     }

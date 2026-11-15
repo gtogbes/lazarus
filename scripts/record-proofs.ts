@@ -7,12 +7,17 @@
  *   web/public/recorded/<PROG>.json            the real port
  *   web/public/recorded/<PROG>.<mutant>.json   each mutant
  *
- * Each file is `{ "version": 1, "events": [started, progress..., result] }`, the
- * format web/src/features/proof/recording.ts validates and replays.
+ * Each file is `{ "version": 2, "events": [started, progress..., result] }`, the
+ * format web/src/features/proof/recording.ts validates and replays. Version 2
+ * (graphical-proof Requirement 3) snapshots progress every 20 ms, carries
+ * `cases` and `phase` on every progress event and a Shrink_Path on a diverged
+ * result.
  *
  * A recording whose outcome contradicts what the registry says (the real port and
  * equivalent mutants must be equivalent, every other mutant must diverge), or that
- * hit the time cap, is not written, and the script exits non-zero.
+ * hit the time cap, or that the web client would reject (more than 500 events,
+ * bad phase or case data, a missing or invalid Shrink_Path), is not written, and
+ * the script exits non-zero.
  *
  *   npm run record:proofs                         # docker runner (local reference image)
  *   LAZARUS_RUNNER=native npm run record:proofs   # binaries in LAZARUS_BIN_DIR
@@ -23,11 +28,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { CobolRunner } from '../src/harness/cobol.js';
 import { prove, type ProveEvent, type ProveOptions } from '../src/api/prove.js';
 import type { Mutant } from '../src/ports/mutant.js';
+import { validateShrinkPath } from '../src/harness/shrinkPath.js';
 import { PROGRAMS, type Program } from '../src/ports/registry.js';
 
 /** One seed for every recording, so each can be reproduced with `LAZARUS_SEED`. */
 export const RECORDING_SEED = 20261204;
-export const RECORDING_VERSION = 1;
+export const RECORDING_VERSION = 2;
+/** Progress snapshot interval for recordings. The live API stays at 4 Hz (Requirement 3.2). */
+export const RECORDING_PROGRESS_INTERVAL_MS = 20;
+/** Must match `MAX_RECORDED_EVENTS` in web/src/features/proof/recording.ts. */
+export const MAX_RECORDED_EVENTS = 500;
 export const RECORDED_DIR = fileURLToPath(new URL('../web/public/recorded/', import.meta.url));
 
 export interface RecordingTarget {
@@ -74,6 +84,7 @@ export function checkRecording(target: RecordingTarget, file: RecordingFile, see
   if (started.mutant !== target.mutant?.id) {
     problems.push(`recorded mutant ${started.mutant ?? '(none)'}, expected ${target.mutant?.id ?? '(none)'}`);
   }
+  problems.push(...checkClientRules(file));
   const { result } = last;
   if (started.seed !== seed || result.seed !== seed) problems.push(`seed ${result.seed}, expected ${seed} (is LAZARUS_SEED set?)`);
   if (result.reference !== started.reference) problems.push('result reference differs from the started reference');
@@ -89,6 +100,57 @@ export function checkRecording(target: RecordingTarget, file: RecordingFile, see
   return problems;
 }
 
+const isCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+
+/**
+ * The checks `parseRecording` in web/src/features/proof/recording.ts applies to
+ * a version 2 recording (with parseProveEvent and progressModel's applyProgress),
+ * replicated here because the web modules are not importable under the Node
+ * build. Both are tested against the same fixtures
+ * (web/src/features/proof/fixtures/recordingV2Corruptions.ts).
+ */
+function checkClientRules(file: RecordingFile): string[] {
+  const problems: string[] = [];
+  const { events } = file;
+  if (events.length > MAX_RECORDED_EVENTS) problems.push(`${events.length} events, more than ${MAX_RECORDED_EVENTS}`);
+  const started = events[0];
+  const last = events.at(-1);
+  if (started?.type !== 'started' || last?.type !== 'result') return problems;
+  let elapsedMs = 0;
+  let cases = 0;
+  let shrinking = false;
+  events.slice(1, -1).forEach((event, i) => {
+    if (event.type !== 'progress') return;
+    const at = `progress event ${i + 1}`;
+    if (!isCount(event.executions) || !isCount(event.divergences)) problems.push(`${at}: bad counts`);
+    if (!(Number.isFinite(event.elapsedMs) && event.elapsedMs >= elapsedMs)) problems.push(`${at}: elapsedMs decreases`);
+    else elapsedMs = event.elapsedMs;
+    const phase: unknown = event.phase;
+    if (event.cases === undefined || phase === undefined) {
+      problems.push(`${at}: missing cases or phase`);
+      return;
+    }
+    if (phase !== 'generating' && phase !== 'shrinking') problems.push(`${at}: unknown phase ${String(phase)}`);
+    if (!isCount(event.cases)) problems.push(`${at}: cases is not a count`);
+    else {
+      if (event.cases > event.executions) problems.push(`${at}: cases ${event.cases} above executions ${event.executions}`);
+      if (event.cases > started.numRuns) problems.push(`${at}: cases ${event.cases} above numRuns ${started.numRuns}`);
+      if (event.cases < cases) problems.push(`${at}: cases decrease from ${cases} to ${event.cases}`);
+      cases = Math.max(cases, event.cases);
+    }
+    if (shrinking && phase === 'generating') problems.push(`${at}: returns from shrinking to generating`);
+    if (phase === 'shrinking') shrinking = true;
+  });
+  const { result } = last;
+  if (cases > result.cases) problems.push(`progress reached ${cases} cases, result has ${result.cases}`);
+  if (Number.isNaN(Date.parse(result.generatedAt))) problems.push('result generatedAt is not a date');
+  if (result.status === 'diverged') {
+    if (result.shrinkPath === undefined) problems.push('diverged result has no shrinkPath');
+    else problems.push(...validateShrinkPath(result.shrinkPath, result).map((p) => `shrinkPath: ${p}`));
+  }
+  return problems;
+}
+
 /** Run one proof through `prove` and return its event stream. Throws if the run failed. */
 export async function recordProof(
   target: RecordingTarget,
@@ -100,7 +162,7 @@ export async function recordProof(
     { program: target.program, ...(target.mutant ? { mutant: target.mutant } : {}), seed },
     (event) => events.push(event),
     new AbortController().signal,
-    options,
+    { progressIntervalMs: RECORDING_PROGRESS_INTERVAL_MS, ...options },
   );
   if (outcome.status === 'failed') {
     throw new Error(`${describeTarget(target)}: the proof run failed`, { cause: outcome.error });
@@ -153,8 +215,11 @@ export async function recordAll(options: RecordAllOptions = {}): Promise<RecordA
     written.push(file);
     const last = recording.events.at(-1);
     if (last?.type === 'result') {
-      const { status, cases, durationMs, reference } = last.result;
-      log(`ok   ${file}: ${status} after ${cases} cases in ${durationMs} ms (${reference})`);
+      const { status, cases, shrinks, durationMs, reference } = last.result;
+      log(
+        `ok   ${file}: ${status} after ${cases} cases, ${shrinks} shrinks, in ${durationMs} ms (${reference}); ` +
+          `${recording.events.length} events`,
+      );
     }
   }
   return { written, failures };

@@ -9,7 +9,8 @@
  *   1. the image does not set LAZARUS_RUNS or LAZARUS_SEED;
  *   2. its libcob4 is the reference image's (lazarus-gnucobol:3.1.2), if present;
  *   3. PAYROLL: 200 NDJSON with started, progress, and an equivalent result of 2,000 cases;
- *   4. PAYROLL half-up-tax mutant: diverged;
+ *   3a. every progress line has `cases` and `phase`; the last one's cases equal the result's;
+ *   4. PAYROLL half-up-tax mutant: diverged, with `shrinking` progress and a `shrinkPath`;
  *   5. a bad body: 400 with `{ error }`;
  *   6. the function sent the 200 responses in streaming mode (the tap's view);
  *   7. the function's logs are JSON with the request id and never the body;
@@ -155,13 +156,35 @@ async function main(): Promise<void> {
       ms: proof.ms,
     });
 
+    // graphical-proof Requirements 1.4, 1.5: every progress line carries cases and phase.
+    const progressOk = (all: Line[]) =>
+      all
+        .filter((l) => l.type === 'progress')
+        .every((l) => Number.isSafeInteger(l.cases) && (l.cases as number) >= 0 && (l.phase === 'generating' || l.phase === 'shrinking'));
+    const lastProgress = proofLines.filter((l) => l.type === 'progress').at(-1);
+    check(progressOk(proofLines) && lastProgress?.cases === result?.cases, 'PAYROLL: progress has cases and phase; last cases = result cases', {
+      last: lastProgress && { cases: lastProgress.cases, phase: lastProgress.phase },
+    });
+
     const mutant = await invoke(JSON.stringify({ program: 'PAYROLL', mutant: 'half-up-tax', seed: 123 }));
-    const mutantResult = lines(mutant.body).at(-1)?.result;
+    const mutantLines = lines(mutant.body);
+    const mutantResult = mutantLines.at(-1)?.result;
     check(mutant.prelude.statusCode === 200 && mutantResult?.status === 'diverged', 'PAYROLL half-up-tax: diverged', {
       status: mutantResult?.status,
       cases: mutantResult?.cases,
       ms: mutant.ms,
     });
+    // graphical-proof Requirements 1.2, 2.1: the shrinking phase is reported and the result has a shrink path.
+    const shrinkPath = (mutantResult as { shrinkPath?: { total: number; steps: { step: number }[] } } | undefined)?.shrinkPath;
+    check(
+      progressOk(mutantLines) &&
+        mutantLines.some((l) => l.type === 'progress' && l.phase === 'shrinking') &&
+        shrinkPath !== undefined &&
+        shrinkPath.steps.length > 0 &&
+        shrinkPath.steps.at(-1)?.step === shrinkPath.total - 1,
+      'PAYROLL half-up-tax: shrinking progress and a shrinkPath ending at the counterexample',
+      shrinkPath && { total: shrinkPath.total, steps: shrinkPath.steps.length },
+    );
 
     const bad = await invoke(JSON.stringify({ program: 'PAYROLL', seed: 'hunter2' }));
     check(

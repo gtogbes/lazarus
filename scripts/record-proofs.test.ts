@@ -16,6 +16,7 @@ import {
   RECORDING_SEED,
   type RecordingFile,
 } from './record-proofs.js';
+import { recordingV2Corruptions } from '../web/src/features/proof/fixtures/recordingV2Corruptions.js';
 
 /**
  * Stands in for GnuCOBOL by answering with the real port of the program (or
@@ -76,7 +77,7 @@ describe('recordAll with a fake GnuCOBOL session', () => {
     expect((await readdir(outDir)).sort()).toEqual([...expectedFiles].sort());
 
     const payroll = await readRecording('PAYROLL.json');
-    expect(payroll.version).toBe(1);
+    expect(payroll.version).toBe(2);
     expect(payroll.events[0]).toEqual({
       type: 'started',
       program: 'PAYROLL',
@@ -96,6 +97,61 @@ describe('recordAll with a fake GnuCOBOL session', () => {
 
     const equivalentMutant = await readRecording('PAYROLL.strict-band-edge.json');
     expect(equivalentMutant.events.at(-1)).toMatchObject({ type: 'result', result: { status: 'equivalent' } });
+
+    // Every file is version 2: cases and phase on each progress event, a Shrink_Path on each divergence.
+    for (const name of expectedFiles) {
+      const recording = await readRecording(name);
+      expect(recording.version, name).toBe(2);
+      for (const event of recording.events.slice(1, -1)) {
+        expect(event, name).toMatchObject({ type: 'progress', cases: expect.any(Number) });
+        expect(['generating', 'shrinking'], name).toContain((event as { phase?: unknown }).phase);
+      }
+      const last = recording.events.at(-1);
+      if (last?.type === 'result' && last.result.status === 'diverged') {
+        expect(last.result.shrinkPath, name).toMatchObject({ total: expect.any(Number), steps: expect.any(Array) });
+      }
+    }
+  });
+
+  it('snapshots progress every 20 ms, not at the live 4 Hz (graphical-proof Requirement 3.2)', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    let intervals: unknown[];
+    try {
+      const report = await recordAll({ outDir, targets: [{ program: findProgram('PAYROLL')! }], prove: fakeProve() });
+      expect(report.failures).toEqual([]);
+      intervals = setIntervalSpy.mock.calls.map(([, ms]) => ms);
+    } finally {
+      setIntervalSpy.mockRestore();
+    }
+    expect(intervals).toEqual([20]);
+  });
+
+  it('writes nothing when the run produces more than 500 events (graphical-proof Requirement 3.3)', async () => {
+    // A COBOL session that stalls for a second while progress ticks every millisecond.
+    const port = findProgram('PAYROLL')!.port;
+    let stalled = false;
+    const report = await recordAll({
+      outDir,
+      targets: [{ program: findProgram('PAYROLL')! }],
+      prove: {
+        reference: 'fake-gnucobol',
+        progressIntervalMs: 1,
+        startSession: () => ({
+          send: async (records) => {
+            if (!stalled) {
+              stalled = true;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+            return records.map(port);
+          },
+          close: async () => 0,
+        }),
+      },
+    });
+    expect(report.written).toEqual([]);
+    expect(report.failures).toHaveLength(1);
+    expect(report.failures[0]?.problems.join('; ')).toMatch(/events, more than 500/);
+    expect(await readdir(outDir)).toEqual([]);
   });
 
   it('fails loudly and writes nothing for a recording that contradicts its label', async () => {
@@ -149,7 +205,7 @@ describe('checkRecording', () => {
     durationMs: 10,
   } as const;
   const file = (overrides: object = {}, mutant?: string): RecordingFile => ({
-    version: 1,
+    version: 2,
     events: [
       { type: 'started', program: 'PAYROLL', ...(mutant ? { mutant } : {}), seed: RECORDING_SEED, reference: 'r', numRuns: 2000 },
       { type: 'result', result: { ...result, ...overrides } },
@@ -174,6 +230,22 @@ describe('checkRecording', () => {
     ]);
     expect(checkRecording({ program: payroll }, file({ seed: 7 }))[0]).toContain('seed 7');
     expect(checkRecording({ program: payroll }, file({}, 'half-up-tax'))[0]).toContain('recorded mutant half-up-tax');
+  });
+});
+
+describe('checkRecording applies the web client checks (graphical-proof Requirement 3.3)', () => {
+  // The same fixture and corruptions as web/src/features/proof/recordingV2.test.ts runs through parseRecording.
+  const fixture = path.join(import.meta.dirname, '../web/src/features/proof/fixtures/PAYROLL.half-up-tax.v2.json');
+  const base = JSON.parse(readFileSync(fixture, 'utf8')) as unknown;
+  const payroll = findProgram('PAYROLL')!;
+  const target = { program: payroll, mutant: payroll.mutants.find((m) => m.id === 'half-up-tax')! };
+
+  it('accepts the version 2 fixture', () => {
+    expect(checkRecording(target, base as RecordingFile)).toEqual([]);
+  });
+
+  it.each(recordingV2Corruptions(base))('rejects %s', (_name, corrupted) => {
+    expect(checkRecording(target, corrupted as unknown as RecordingFile)).not.toEqual([]);
   });
 });
 

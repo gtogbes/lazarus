@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "events": [
     {
       "type": "started",
@@ -11,20 +11,86 @@
     },
     {
       "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 22
+    },
+    {
+      "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 42
+    },
+    {
+      "type": "progress",
+      "executions": 3,
+      "divergences": 3,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 62
+    },
+    {
+      "type": "progress",
+      "executions": 93,
+      "divergences": 42,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 82
+    },
+    {
+      "type": "progress",
+      "executions": 180,
+      "divergences": 92,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 102
+    },
+    {
+      "type": "progress",
+      "executions": 267,
+      "divergences": 132,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 122
+    },
+    {
+      "type": "progress",
+      "executions": 351,
+      "divergences": 173,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 142
+    },
+    {
+      "type": "progress",
+      "executions": 442,
+      "divergences": 219,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 162
+    },
+    {
+      "type": "progress",
       "executions": 490,
       "divergences": 245,
-      "elapsedMs": 183
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 173
     },
     {
       "type": "result",
       "result": {
         "program": "INTCALC",
         "reference": "lazarus-gnucobol:3.1.2",
-        "generatedAt": "2026-11-09T11:30:10.679Z",
+        "generatedAt": "2026-11-12T12:53:21.925Z",
         "seed": 20261204,
         "cases": 1,
         "shrinks": 244,
-        "durationMs": 181,
+        "durationMs": 171,
         "status": "diverged",
         "counterexample": {
           "records": [
@@ -38,6 +104,188 @@
           ],
           "line": 0,
           "column": 25
+        },
+        "shrinkPath": {
+          "total": 245,
+          "steps": [
+            {
+              "step": 0,
+              "records": [
+                "34OU942N-99999999999586835905",
+                "EV0L2S5M+21538966861061085005",
+                "27WONH51-21814703507506800050",
+                "48S2XAZN+00000000005959429866",
+                "9IAB4U49-59817617764755711789",
+                "FI7LVIO5-48088900642224009367",
+                "94X0EN6L-81248484183746310437",
+                "3RR4NEQN+63542383832672840807",
+                "CZKL7SZC+65731470057859262410",
+                "CX5S8747+60965498545535659650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 11,
+              "records": [
+                "AA0A0000+43818952080535659650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 22,
+              "records": [
+                "AA0A0000+42841765842535659650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 32,
+              "records": [
+                "AA0A0000+42841765755394081650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 43,
+              "records": [
+                "AA0A0000+26037407380394077650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 53,
+              "records": [
+                "AA0A0000+26037081961394077650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 64,
+              "records": [
+                "AA0A0000+13221955643394074650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 74,
+              "records": [
+                "AA0A0000+13108269326394074650"
+              ],
+              "line": 0
+            },
+            {
+              "step": 85,
+              "records": [
+                "AA0A0000+13108269072246296325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 96,
+              "records": [
+                "AA0A0000+02460200648246296325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 106,
+              "records": [
+                "AA0A0000+02460159637233982325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 117,
+              "records": [
+                "AA0A0000+02196485300233970325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 127,
+              "records": [
+                "AA0A0000+02196435131233968325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 138,
+              "records": [
+                "AA0A0000+00645443292233968325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 148,
+              "records": [
+                "AA0A0000+00645441661175476325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 159,
+              "records": [
+                "AA0A0000+00497840747175476325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 170,
+              "records": [
+                "AA0A0000+00497840450138891325"
+              ],
+              "line": 0
+            },
+            {
+              "step": 180,
+              "records": [
+                "AA0A0000+00132117327138870285"
+              ],
+              "line": 0
+            },
+            {
+              "step": 191,
+              "records": [
+                "AA0A0000+00132110721138866285"
+              ],
+              "line": 0
+            },
+            {
+              "step": 201,
+              "records": [
+                "AA0A0000+00130981972138866285"
+              ],
+              "line": 0
+            },
+            {
+              "step": 212,
+              "records": [
+                "AA0A0000+00032745481138864250"
+              ],
+              "line": 0
+            },
+            {
+              "step": 222,
+              "records": [
+                "AA0A0000+00004137157138864250"
+              ],
+              "line": 0
+            },
+            {
+              "step": 233,
+              "records": [
+                "AA0A0000+00004133727138863250"
+              ],
+              "line": 0
+            },
+            {
+              "step": 244,
+              "records": [
+                "AA0A0000+00001650918138863250"
+              ],
+              "line": 0
+            }
+          ]
         }
       }
     }

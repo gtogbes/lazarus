@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "events": [
     {
       "type": "started",
@@ -11,20 +11,78 @@
     },
     {
       "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 22
+    },
+    {
+      "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 43
+    },
+    {
+      "type": "progress",
+      "executions": 0,
+      "divergences": 0,
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 63
+    },
+    {
+      "type": "progress",
+      "executions": 28,
+      "divergences": 19,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 82
+    },
+    {
+      "type": "progress",
+      "executions": 96,
+      "divergences": 51,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 102
+    },
+    {
+      "type": "progress",
+      "executions": 158,
+      "divergences": 76,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 122
+    },
+    {
+      "type": "progress",
+      "executions": 216,
+      "divergences": 99,
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 143
+    },
+    {
+      "type": "progress",
       "executions": 241,
       "divergences": 104,
-      "elapsedMs": 117
+      "cases": 1,
+      "phase": "shrinking",
+      "elapsedMs": 155
     },
     {
       "type": "result",
       "result": {
         "program": "INVOICE",
         "reference": "lazarus-gnucobol:3.1.2",
-        "generatedAt": "2026-11-09T11:30:13.101Z",
+        "generatedAt": "2026-11-12T12:53:24.503Z",
         "seed": 20261204,
         "cases": 1,
         "shrinks": 103,
-        "durationMs": 116,
+        "durationMs": 154,
         "status": "diverged",
         "counterexample": {
           "records": [
@@ -38,6 +96,188 @@
           ],
           "line": 0,
           "column": 28
+        },
+        "shrinkPath": {
+          "total": 104,
+          "steps": [
+            {
+              "step": 0,
+              "records": [
+                "34OU9441424929775999S",
+                "54E1C934681379141999S",
+                "3ZQXR236820000000000 ",
+                "58OKBN71870790614857X",
+                "6K40Q941353978189328Z",
+                "B4U49C34649917192328X",
+                "I7LVIO98254509659050 ",
+                "794X0E12299067996001S",
+                "YP13RR31945269679000X",
+                "NJ2C4C27610998648741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 5,
+              "records": [
+                "AA0A4C27610998648741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 9,
+              "records": [
+                "AA0A0A17260998648741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 14,
+              "records": [
+                "AA0A0A16160499324741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 18,
+              "records": [
+                "AA0A0A04040499324741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 23,
+              "records": [
+                "AA0A0A01140249662741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 27,
+              "records": [
+                "AA0A0A01030187247741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 32,
+              "records": [
+                "AA0A0A00930187247741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 36,
+              "records": [
+                "AA0A0A00800156039741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 40,
+              "records": [
+                "AA0A0A00790134584741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 45,
+              "records": [
+                "AA0A0A00390134250741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 49,
+              "records": [
+                "AA0A0A00240134243741R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 54,
+              "records": [
+                "AA0A0A00180134240371R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 58,
+              "records": [
+                "AA0A0A00130134239371R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 63,
+              "records": [
+                "AA0A0A00120014683371R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 67,
+              "records": [
+                "AA0A0A00080013503371R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 71,
+              "records": [
+                "AA0A0A00080013389186R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 76,
+              "records": [
+                "AA0A0A00050013377186R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 80,
+              "records": [
+                "AA0A0A00040013373186R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 85,
+              "records": [
+                "AA0A0A00020005851186R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 89,
+              "records": [
+                "AA0A0A00010005623186R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 94,
+              "records": [
+                "AA0A0A00010004215093R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 98,
+              "records": [
+                "AA0A0A00010003371093R"
+              ],
+              "line": 0
+            },
+            {
+              "step": 103,
+              "records": [
+                "AA0A0A00010003365059S"
+              ],
+              "line": 0
+            }
+          ]
         }
       }
     }

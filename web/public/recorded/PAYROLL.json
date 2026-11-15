@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "events": [
     {
       "type": "started",
@@ -10,32 +10,238 @@
     },
     {
       "type": "progress",
-      "executions": 734,
+      "executions": 0,
       "divergences": 0,
-      "elapsedMs": 251
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 23
     },
     {
       "type": "progress",
-      "executions": 1810,
+      "executions": 0,
       "divergences": 0,
-      "elapsedMs": 501
+      "cases": 0,
+      "phase": "generating",
+      "elapsedMs": 43
+    },
+    {
+      "type": "progress",
+      "executions": 2,
+      "divergences": 0,
+      "cases": 2,
+      "phase": "generating",
+      "elapsedMs": 63
+    },
+    {
+      "type": "progress",
+      "executions": 89,
+      "divergences": 0,
+      "cases": 89,
+      "phase": "generating",
+      "elapsedMs": 83
+    },
+    {
+      "type": "progress",
+      "executions": 172,
+      "divergences": 0,
+      "cases": 172,
+      "phase": "generating",
+      "elapsedMs": 103
+    },
+    {
+      "type": "progress",
+      "executions": 259,
+      "divergences": 0,
+      "cases": 259,
+      "phase": "generating",
+      "elapsedMs": 123
+    },
+    {
+      "type": "progress",
+      "executions": 341,
+      "divergences": 0,
+      "cases": 341,
+      "phase": "generating",
+      "elapsedMs": 143
+    },
+    {
+      "type": "progress",
+      "executions": 424,
+      "divergences": 0,
+      "cases": 424,
+      "phase": "generating",
+      "elapsedMs": 163
+    },
+    {
+      "type": "progress",
+      "executions": 506,
+      "divergences": 0,
+      "cases": 506,
+      "phase": "generating",
+      "elapsedMs": 183
+    },
+    {
+      "type": "progress",
+      "executions": 581,
+      "divergences": 0,
+      "cases": 581,
+      "phase": "generating",
+      "elapsedMs": 203
+    },
+    {
+      "type": "progress",
+      "executions": 665,
+      "divergences": 0,
+      "cases": 665,
+      "phase": "generating",
+      "elapsedMs": 223
+    },
+    {
+      "type": "progress",
+      "executions": 751,
+      "divergences": 0,
+      "cases": 751,
+      "phase": "generating",
+      "elapsedMs": 243
+    },
+    {
+      "type": "progress",
+      "executions": 837,
+      "divergences": 0,
+      "cases": 837,
+      "phase": "generating",
+      "elapsedMs": 263
+    },
+    {
+      "type": "progress",
+      "executions": 923,
+      "divergences": 0,
+      "cases": 923,
+      "phase": "generating",
+      "elapsedMs": 283
+    },
+    {
+      "type": "progress",
+      "executions": 1007,
+      "divergences": 0,
+      "cases": 1007,
+      "phase": "generating",
+      "elapsedMs": 303
+    },
+    {
+      "type": "progress",
+      "executions": 1091,
+      "divergences": 0,
+      "cases": 1091,
+      "phase": "generating",
+      "elapsedMs": 323
+    },
+    {
+      "type": "progress",
+      "executions": 1162,
+      "divergences": 0,
+      "cases": 1162,
+      "phase": "generating",
+      "elapsedMs": 343
+    },
+    {
+      "type": "progress",
+      "executions": 1242,
+      "divergences": 0,
+      "cases": 1242,
+      "phase": "generating",
+      "elapsedMs": 363
+    },
+    {
+      "type": "progress",
+      "executions": 1324,
+      "divergences": 0,
+      "cases": 1324,
+      "phase": "generating",
+      "elapsedMs": 383
+    },
+    {
+      "type": "progress",
+      "executions": 1410,
+      "divergences": 0,
+      "cases": 1410,
+      "phase": "generating",
+      "elapsedMs": 403
+    },
+    {
+      "type": "progress",
+      "executions": 1495,
+      "divergences": 0,
+      "cases": 1495,
+      "phase": "generating",
+      "elapsedMs": 423
+    },
+    {
+      "type": "progress",
+      "executions": 1580,
+      "divergences": 0,
+      "cases": 1580,
+      "phase": "generating",
+      "elapsedMs": 443
+    },
+    {
+      "type": "progress",
+      "executions": 1659,
+      "divergences": 0,
+      "cases": 1659,
+      "phase": "generating",
+      "elapsedMs": 463
+    },
+    {
+      "type": "progress",
+      "executions": 1737,
+      "divergences": 0,
+      "cases": 1737,
+      "phase": "generating",
+      "elapsedMs": 483
+    },
+    {
+      "type": "progress",
+      "executions": 1817,
+      "divergences": 0,
+      "cases": 1817,
+      "phase": "generating",
+      "elapsedMs": 503
+    },
+    {
+      "type": "progress",
+      "executions": 1899,
+      "divergences": 0,
+      "cases": 1899,
+      "phase": "generating",
+      "elapsedMs": 523
+    },
+    {
+      "type": "progress",
+      "executions": 1978,
+      "divergences": 0,
+      "cases": 1978,
+      "phase": "generating",
+      "elapsedMs": 543
     },
     {
       "type": "progress",
       "executions": 2000,
       "divergences": 0,
-      "elapsedMs": 546
+      "cases": 2000,
+      "phase": "generating",
+      "elapsedMs": 549
     },
     {
       "type": "result",
       "result": {
         "program": "PAYROLL",
         "reference": "lazarus-gnucobol:3.1.2",
-        "generatedAt": "2026-11-09T11:30:11.346Z",
+        "generatedAt": "2026-11-12T12:53:22.596Z",
         "seed": 20261204,
         "cases": 2000,
         "shrinks": 0,
-        "durationMs": 544,
+        "durationMs": 547,
         "status": "equivalent"
       }
     }
