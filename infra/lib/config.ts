@@ -27,6 +27,39 @@ export const PROOF_API = {
   logRetentionDays: 90,
 } as const;
 
+/** CDK context keys for the site's custom domain (defaults in cdk.json). */
+export const DOMAIN_NAME_CONTEXT = 'domainName';
+export const HOSTED_ZONE_DOMAIN_CONTEXT = 'hostedZoneDomain';
+
+export interface SiteDomain {
+  /** The site's host name, e.g. lab.example.com. */
+  readonly domainName: string;
+  /** The public Route 53 hosted zone that holds it, e.g. example.com. */
+  readonly hostedZoneDomain: string;
+}
+
+const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/**
+ * The custom domain from CDK context (`-c domainName=... -c hostedZoneDomain=...`).
+ * Throws when either is missing, malformed, or the name is not inside the zone.
+ */
+export function resolveSiteDomain(domainName: unknown, hostedZoneDomain: unknown): SiteDomain {
+  const name = typeof domainName === 'string' ? domainName.trim().toLowerCase().replace(/\.$/, '') : '';
+  const zone = typeof hostedZoneDomain === 'string' ? hostedZoneDomain.trim().toLowerCase().replace(/\.$/, '') : '';
+  if (!name || !zone) {
+    throw new Error(
+      `Missing the site domain. Set it with \`-c ${DOMAIN_NAME_CONTEXT}=lazarus.example.com ` +
+        `-c ${HOSTED_ZONE_DOMAIN_CONTEXT}=example.com\` (defaults live in infra/cdk.json).`,
+    );
+  }
+  for (const value of [name, zone]) if (!HOST.test(value)) throw new Error(`"${value}" is not a valid DNS name.`);
+  if (name !== zone && !name.endsWith(`.${zone}`)) {
+    throw new Error(`The site domain "${name}" is not inside the hosted zone "${zone}".`);
+  }
+  return { domainName: name, hostedZoneDomain: zone };
+}
+
 /** CDK context key and environment variable for the budget alert address. */
 export const BUDGET_EMAIL_CONTEXT = 'budgetEmail';
 export const BUDGET_EMAIL_ENV = 'LAZARUS_BUDGET_EMAIL';

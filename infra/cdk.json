@@ -17,6 +17,8 @@
     "@aws-cdk/aws-iam:standardizedServicePrincipals": true,
     "@aws-cdk/aws-lambda:recognizeVersionProps": true,
     "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,
-    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": true
+    "@aws-cdk/aws-s3:keepNotificationInImportedBucket": true,
+    "domainName": "lab.example.com",
+    "hostedZoneDomain": "example.com"
   }
 }

@@ -115,4 +115,4 @@ is proven, so that I can pick one to inspect.
 
 ## Open decisions
 - ~~AWS region for the proof API~~ Decided: us-east-1 (owner, 2026-11-07).
-- Custom domain, or the CloudFront default domain.
+- ~~Custom domain, or the CloudFront default domain~~ Decided: lab.example.com in the owner's Route 53 zone (task 22).

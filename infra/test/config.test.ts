@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { BUDGET_EMAIL_ENV, resolveBudgetEmail, REPO_ROOT } from '../lib/config.js';
+import { BUDGET_EMAIL_ENV, resolveBudgetEmail, resolveSiteDomain, REPO_ROOT } from '../lib/config.js';
 import { lambdaContextExcludes } from '../lib/docker-context.js';
 import { loadSpaRewrite } from '../lib/spa-rewrite.js';
 
@@ -14,6 +14,23 @@ describe('resolveBudgetEmail', () => {
   it('throws when missing or malformed', () => {
     expect(() => resolveBudgetEmail(undefined, {})).toThrow(/Missing the budget alert email/);
     expect(() => resolveBudgetEmail('not-an-email', {})).toThrow(/does not look like an email/);
+  });
+});
+
+describe('resolveSiteDomain', () => {
+  it('normalises case and a trailing dot', () => {
+    expect(resolveSiteDomain(' Lazarus.Example.com. ', 'example.com')).toEqual({
+      domainName: 'lazarus.example.com',
+      hostedZoneDomain: 'example.com',
+    });
+  });
+
+  it('throws when missing, malformed, or outside the zone', () => {
+    expect(() => resolveSiteDomain(undefined, 'example.com')).toThrow(/-c domainName=.*hostedZoneDomain=/);
+    expect(() => resolveSiteDomain('lazarus.example.com', '')).toThrow(/Missing the site domain/);
+    expect(() => resolveSiteDomain('bad_name.example.com', 'example.com')).toThrow(/not a valid DNS name/);
+    expect(() => resolveSiteDomain('lazarus.example.org', 'example.com')).toThrow(/not inside the hosted zone/);
+    expect(() => resolveSiteDomain('lazarusexample.com', 'example.com')).toThrow(/not inside the hosted zone/);
   });
 });
 

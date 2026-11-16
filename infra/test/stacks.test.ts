@@ -10,6 +10,9 @@ import { CONTENT_SECURITY_POLICY, SECURITY_HEADERS } from '../lib/security-heade
 
 const EMAIL = 'owner@example.com';
 const ACCOUNT = '111111111111'; // test-only placeholder
+// Test-only domain and zone: imported by id, so no Route 53 lookup and no AWS credentials.
+const DOMAIN = { domainName: 'lazarus.example.com', hostedZoneDomain: 'example.com' };
+const ZONE_ID = 'Z0000000000TESTZONE';
 
 function fixtureSite(): string {
   const dir = mkdtempSync(join(tmpdir(), 'lazarus-site-'));
@@ -17,8 +20,11 @@ function fixtureSite(): string {
   return dir;
 }
 
-function build(context: Record<string, string> = { budgetEmail: EMAIL }, env: NodeJS.ProcessEnv = { CDK_DEFAULT_ACCOUNT: ACCOUNT }) {
-  return buildApp({ app: new App({ context }), siteDir: fixtureSite(), env });
+function build(
+  context: Record<string, string> = { budgetEmail: EMAIL, ...DOMAIN },
+  env: NodeJS.ProcessEnv = { CDK_DEFAULT_ACCOUNT: ACCOUNT },
+) {
+  return buildApp({ app: new App({ context }), siteDir: fixtureSite(), env, hostedZoneId: ZONE_ID });
 }
 
 function filesUnder(dir: string): string[] {
@@ -262,6 +268,52 @@ describe('SiteStack', () => {
     }
   });
 
+  it('issues a DNS-validated ACM certificate for the domain in the hosted zone (us-east-1, as CloudFront requires)', () => {
+    site.resourceCountIs('AWS::CertificateManager::Certificate', 1);
+    site.hasResourceProperties('AWS::CertificateManager::Certificate', {
+      DomainName: DOMAIN.domainName,
+      ValidationMethod: 'DNS',
+      DomainValidationOptions: [{ DomainName: DOMAIN.domainName, HostedZoneId: ZONE_ID }],
+      SubjectAlternativeNames: Match.absent(),
+    });
+    expect(built.site.region).toBe('us-east-1');
+  });
+
+  it('serves the domain as a distribution alias with that certificate over SNI and TLSv1.2_2021', () => {
+    const [dist] = Object.values(site.findResources('AWS::CloudFront::Distribution'));
+    const config = dist?.['Properties'].DistributionConfig;
+    const certId = Object.keys(site.findResources('AWS::CertificateManager::Certificate'))[0];
+    expect(config.Aliases).toEqual([DOMAIN.domainName]);
+    expect(config.ViewerCertificate).toEqual({
+      AcmCertificateArn: { Ref: certId },
+      MinimumProtocolVersion: 'TLSv1.2_2021',
+      SslSupportMethod: 'sni-only',
+    });
+  });
+
+  it('points A and AAAA alias records for the domain at the distribution', () => {
+    const distId = Object.keys(site.findResources('AWS::CloudFront::Distribution'))[0];
+    for (const type of ['A', 'AAAA']) {
+      site.hasResourceProperties('AWS::Route53::RecordSet', {
+        Name: `${DOMAIN.domainName}.`,
+        Type: type,
+        HostedZoneId: ZONE_ID,
+        AliasTarget: {
+          DNSName: { 'Fn::GetAtt': [distId, 'DomainName'] },
+          HostedZoneId: Match.anyValue(),
+        },
+      });
+    }
+    site.resourceCountIs('AWS::Route53::RecordSet', 2);
+    expect(site.toJSON()['Outputs']['SiteUrl'].Value).toBe(`https://${DOMAIN.domainName}`);
+    expect(site.toJSON()['Outputs']['DistributionDomainName'].Value).toEqual({ 'Fn::GetAtt': [distId, 'DomainName'] });
+  });
+
+  it('does not hardcode a cloudfront.net host: the CSP is same-origin only', () => {
+    expect(JSON.stringify(site.toJSON())).not.toContain('cloudfront.net');
+    expect(CONTENT_SECURITY_POLICY).toContain("default-src 'self'");
+  });
+
   it('deploys hashed assets as immutable and everything else as must-revalidate, then invalidates', () => {
     const deployments = Object.values(site.findResources('Custom::CDKBucketDeployment')).map((r) => r['Properties']);
     expect(deployments).toHaveLength(2);
@@ -328,8 +380,12 @@ describe('the app', () => {
 
   it('fails synth when the web build is missing', () => {
     const empty = mkdtempSync(join(tmpdir(), 'lazarus-empty-'));
-    expect(() => buildApp({ app: new App({ context: { budgetEmail: EMAIL } }), siteDir: empty, env: {} })).toThrow(
-      /npm run web:build/,
-    );
+    expect(() =>
+      buildApp({ app: new App({ context: { budgetEmail: EMAIL, ...DOMAIN } }), siteDir: empty, env: {}, hostedZoneId: ZONE_ID }),
+    ).toThrow(/npm run web:build/);
+  });
+
+  it('fails synth with instructions when the site domain is missing', () => {
+    expect(() => build({ budgetEmail: EMAIL })).toThrow(/-c domainName=.*hostedZoneDomain=/);
   });
 });

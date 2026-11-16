@@ -39,7 +39,7 @@ export const CSP_DIRECTIVES: ReadonlyArray<readonly [directive: string, sources:
 
 export const CONTENT_SECURITY_POLICY = CSP_DIRECTIVES.map(([d, s]) => `${d} ${s.join(' ')}`).join('; ');
 
-/** Two years; no `preload` (the default *.cloudfront.net domain cannot be preloaded). */
+/** Two years; no `preload` (preload lists take the registrable domain, example.com, not this subdomain). */
 export const HSTS_MAX_AGE_SEC = 63_072_000;
 
 export const PERMISSIONS_POLICY = [

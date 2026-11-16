@@ -15,8 +15,13 @@
  *
  * No WAF (owner decision, task 21): its fixed monthly charge would use the whole
  * budget. See the AwsSolutions-CFR2 acknowledgement in nag-suppressions.ts.
+ *
+ * Custom domain (task 22): an ACM certificate validated by DNS in the existing
+ * Route 53 zone, the name as a distribution alias with TLSv1.2_2021, and A/AAAA
+ * alias records. The stack is in us-east-1, where CloudFront requires the certificate.
  */
-import { Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
+import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
 import {
   AccessLevel,
   AllowedMethods,
@@ -35,16 +40,19 @@ import {
   OriginRequestCookieBehavior,
   PriceClass,
   ResponseHeadersPolicy,
+  SecurityPolicyProtocol,
   ViewerProtocolPolicy,
   type BehaviorOptions,
 } from 'aws-cdk-lib/aws-cloudfront';
 import { FunctionUrlOrigin, S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import type { IFunctionUrl } from 'aws-cdk-lib/aws-lambda';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
+import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { BlockPublicAccess, Bucket, BucketEncryption, ObjectOwnership } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, CacheControl, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import type { Construct } from 'constructs';
-import { assertSiteBuilt, DEFAULT_SITE_DIR } from './config.js';
+import { assertSiteBuilt, DEFAULT_SITE_DIR, type SiteDomain } from './config.js';
 import { CONTENT_SECURITY_POLICY, HSTS_MAX_AGE_SEC, SECURITY_HEADERS } from './security-headers.js';
 import { SPA_REWRITE_PATH } from './spa-rewrite.js';
 
@@ -52,6 +60,12 @@ export interface SiteStackProps extends StackProps {
   readonly functionUrl: IFunctionUrl;
   /** Directory with the production web build. Defaults to web/dist. */
   readonly siteDir?: string;
+  readonly domain: SiteDomain;
+  /**
+   * Hosted zone id for `domain.hostedZoneDomain`. When set, the zone is imported by id and no
+   * lookup happens (tests). When unset, it is looked up at synth time and cached in cdk.context.json.
+   */
+  readonly hostedZoneId?: string;
 }
 
 /**
@@ -141,8 +155,22 @@ export class SiteStack extends Stack {
       compress: false,
     };
 
+    const { domainName, hostedZoneDomain } = props.domain;
+    const zone: IHostedZone =
+      props.hostedZoneId === undefined
+        ? HostedZone.fromLookup(this, 'Zone', { domainName: hostedZoneDomain })
+        : HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId: props.hostedZoneId, zoneName: hostedZoneDomain });
+
+    const certificate = new Certificate(this, 'Certificate', {
+      domainName,
+      validation: CertificateValidation.fromDns(zone),
+    });
+
     this.distribution = new Distribution(this, 'Site', {
       comment: 'Lazarus reanimation lab',
+      domainNames: [domainName],
+      certificate,
+      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
       defaultRootObject: 'index.html',
       priceClass: PriceClass.PRICE_CLASS_100,
       httpVersion: HttpVersion.HTTP2_AND_3,
@@ -158,6 +186,16 @@ export class SiteStack extends Stack {
         functionAssociations: [{ function: spaRewrite, eventType: FunctionEventType.VIEWER_REQUEST }],
       },
       additionalBehaviors: { '/api/*': api },
+    });
+
+    const target = RecordTarget.fromAlias(new CloudFrontTarget(this.distribution));
+    new ARecord(this, 'AliasA', { zone, recordName: domainName, target });
+    new AaaaRecord(this, 'AliasAAAA', { zone, recordName: domainName, target });
+
+    new CfnOutput(this, 'SiteUrl', { value: `https://${domainName}`, description: 'The lab' });
+    new CfnOutput(this, 'DistributionDomainName', {
+      value: this.distribution.distributionDomainName,
+      description: 'CloudFront domain (the alias records point here)',
     });
 
     const deployLogs = new LogGroup(this, 'DeployLogs', {

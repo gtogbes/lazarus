@@ -41,12 +41,6 @@ export function addNagSuppressions(_proofApi: Stack, site: Stack): void {
   );
   ack(
     distribution,
-    'AwsSolutions::AwsSolutions-CFR4',
-    'Uses the default *.cloudfront.net certificate (custom domain is an open decision in requirements.md), for which ' +
-      'CloudFront fixes the security policy at TLSv1. A custom domain with an ACM certificate would allow TLSv1.2_2021.',
-  );
-  ack(
-    distribution,
     'AwsSolutions::AwsSolutions-CFR2',
     'Owner decision: WAF omitted for cost (fixed ~$10/month equals the whole budget). The Function URL is protected by ' +
       'AWS_IAM auth plus a CloudFront-only resource policy; abuse cost is bounded by reserved concurrency.',

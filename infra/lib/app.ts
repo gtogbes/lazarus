@@ -3,7 +3,15 @@
  */
 import { App, Tags, Validations } from 'aws-cdk-lib';
 import { AwsSolutionsChecks } from 'cdk-nag';
-import { BUDGET_EMAIL_CONTEXT, REGION, resolveBudgetEmail, TAGS } from './config.js';
+import {
+  BUDGET_EMAIL_CONTEXT,
+  DOMAIN_NAME_CONTEXT,
+  HOSTED_ZONE_DOMAIN_CONTEXT,
+  REGION,
+  resolveBudgetEmail,
+  resolveSiteDomain,
+  TAGS,
+} from './config.js';
 import { addNagSuppressions } from './nag-suppressions.js';
 import { ProofApiStack } from './proof-api-stack.js';
 import { SiteStack } from './site-stack.js';
@@ -13,6 +21,8 @@ export interface LazarusAppOptions {
   /** Overrides for tests. */
   readonly siteDir?: string;
   readonly env?: NodeJS.ProcessEnv;
+  /** Import the hosted zone by id instead of looking it up (tests, no AWS credentials). */
+  readonly hostedZoneId?: string;
 }
 
 export interface LazarusApp {
@@ -25,6 +35,10 @@ export function buildApp(options: LazarusAppOptions = {}): LazarusApp {
   const app = options.app ?? new App();
   const env = options.env ?? process.env;
   const budgetEmail = resolveBudgetEmail(app.node.tryGetContext(BUDGET_EMAIL_CONTEXT), env);
+  const domain = resolveSiteDomain(
+    app.node.tryGetContext(DOMAIN_NAME_CONTEXT),
+    app.node.tryGetContext(HOSTED_ZONE_DOMAIN_CONTEXT),
+  );
   // Account from the CLI's credentials at synth time; never hardcoded.
   const stackEnv = { account: env.CDK_DEFAULT_ACCOUNT, region: REGION };
 
@@ -37,7 +51,9 @@ export function buildApp(options: LazarusAppOptions = {}): LazarusApp {
     env: stackEnv,
     description: 'Lazarus reanimation lab: S3 + CloudFront, /api/* to the proof API',
     functionUrl: proofApi.functionUrl,
+    domain,
     ...(options.siteDir === undefined ? {} : { siteDir: options.siteDir }),
+    ...(options.hostedZoneId === undefined ? {} : { hostedZoneId: options.hostedZoneId }),
   });
 
   for (const [key, value] of Object.entries(TAGS)) Tags.of(app).add(key, value);

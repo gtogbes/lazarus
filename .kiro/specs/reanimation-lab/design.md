@@ -100,6 +100,9 @@ shows the mutant's `explanation`, shrink count, and
 ## Infrastructure (`infra/`, AWS CDK in TypeScript)
 - `SiteStack`: private S3 bucket, CloudFront distribution with OAC, CSP and
   security headers via a response headers policy, `/api/*` behaviour to the Function URL (OAC, no caching).
+  Custom domain `lab.example.com` (context `domainName` / `hostedZoneDomain`, defaults in
+  `cdk.json`): DNS-validated ACM certificate, TLSv1.2_2021, A/AAAA alias records in the
+  looked-up `example.com` zone (cached in `cdk.context.json`).
 - `ProofApiStack`: Lambda from `docker/lambda/Dockerfile` (arm64, 1,024 MB,
   30 s timeout, reserved concurrency 1), Function URL with `AWS_IAM` auth and
   `RESPONSE_STREAM` invoke mode, log group with 90-day retention.
