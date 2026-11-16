@@ -57,6 +57,10 @@ case count reached, flagged `"truncated": true`.
 CloudFront signs requests to the Function URL with Origin Access Control. For
 POST, Lambda OAC requires the viewer to send the body's SHA-256 in
 `x-amz-content-sha256`; the web client computes it with `crypto.subtle.digest`.
+CloudFront uses that viewer header as the payload hash when it signs the origin
+request, so the `/api/*` origin request policy forwards only `Content-Type`:
+CloudFront rejects `X-Amz-*` names in an origin request policy (task 22 deploy
+failure).
 
 ### Web app (`web/`)
 | Route | View | Notes |

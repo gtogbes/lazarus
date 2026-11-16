@@ -185,7 +185,7 @@ describe('SiteStack', () => {
     expect(permissions.find((p) => p.Action === 'lambda:InvokeFunction')?.InvokedViaFunctionUrl).toBe(true);
   });
 
-  it('routes /api/* to the Function URL uncached, POST allowed, forwarding Content-Type and x-amz-content-sha256 but not Host', () => {
+  it('routes /api/* to the Function URL uncached, POST allowed, forwarding only Content-Type (no Host, no X-Amz-*)', () => {
     const [dist] = Object.values(site.findResources('AWS::CloudFront::Distribution'));
     const config = dist?.['Properties'].DistributionConfig;
     const apiBehavior = (config.CacheBehaviors as Record<string, unknown>[]).find((b) => b['PathPattern'] === '/api/*');
@@ -197,12 +197,17 @@ describe('SiteStack', () => {
     });
     site.hasResourceProperties('AWS::CloudFront::OriginRequestPolicy', {
       OriginRequestPolicyConfig: {
-        HeadersConfig: { HeaderBehavior: 'whitelist', Headers: ['Content-Type', 'x-amz-content-sha256'] },
+        HeadersConfig: { HeaderBehavior: 'whitelist', Headers: ['Content-Type'] },
         QueryStringsConfig: { QueryStringBehavior: 'none' },
         CookiesConfig: { CookieBehavior: 'none' },
       },
     });
-    expect(JSON.stringify(site.findResources('AWS::CloudFront::OriginRequestPolicy')).toLowerCase()).not.toContain('"host"');
+    const headerNames = Object.values(site.findResources('AWS::CloudFront::OriginRequestPolicy')).flatMap(
+      (p) => (p['Properties'].OriginRequestPolicyConfig.HeadersConfig.Headers ?? []) as string[],
+    );
+    expect(headerNames.map((h) => h.toLowerCase())).not.toContain('host');
+    // CloudFront rejects X-Amz-* in an origin request policy at create time (task 22 deploy failure).
+    for (const name of headerNames) expect(name.toLowerCase()).not.toMatch(/^x-amz-/);
     expect(config.DefaultCacheBehavior.ViewerProtocolPolicy).toBe('redirect-to-https');
   });
 

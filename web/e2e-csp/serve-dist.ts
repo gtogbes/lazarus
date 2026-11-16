@@ -5,8 +5,9 @@
  * - non-API paths go through the same CloudFront Function source
  *   (infra/lib/spa-rewrite.cf.js), so deep links get index.html and missing
  *   files get a real 404;
- * - /api/* is proxied to the local dev server with only the headers the
- *   CloudFront origin request policy forwards (Content-Type, x-amz-content-sha256).
+ * - /api/* is proxied to the local dev server with only the headers that reach
+ *   the Function URL hosted: Content-Type (the origin request policy) and
+ *   x-amz-content-sha256 (not allowlistable; OAC signs with the viewer's value).
  *
  * Run: `npx tsx e2e-csp/serve-dist.ts` from web/ (Playwright does it, see playwright.config.ts).
  */
@@ -23,7 +24,10 @@ const HOST = '127.0.0.1';
 const PORT = Number(process.env.LAZARUS_CSP_PORT || 4175);
 const API_HOST = process.env.LAZARUS_API_HOST || '127.0.0.1';
 const API_PORT = Number(process.env.LAZARUS_API_PORT || 8787);
-/** Mirrors API_FORWARDED_HEADERS in infra/lib/site-stack.ts (plus content-length, which CloudFront always sends with a body). */
+/**
+ * API_FORWARDED_HEADERS in infra/lib/site-stack.ts, plus x-amz-content-sha256 (part of the OAC-signed
+ * origin request) and content-length (CloudFront always sends it with a body).
+ */
 const FORWARDED = ['content-type', 'x-amz-content-sha256', 'content-length'] as const;
 
 const TYPES: Record<string, string> = {

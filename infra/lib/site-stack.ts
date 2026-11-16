@@ -54,8 +54,16 @@ export interface SiteStackProps extends StackProps {
   readonly siteDir?: string;
 }
 
-/** Headers the proof API needs from the viewer. Host is excluded: OAC signs for the Function URL host. */
-export const API_FORWARDED_HEADERS = ['Content-Type', 'x-amz-content-sha256'] as const;
+/**
+ * Headers the proof API needs from the viewer. Host is excluded: OAC signs for the Function URL host.
+ *
+ * x-amz-content-sha256 is deliberately absent. The browser still sends it (Lambda OAC needs the
+ * viewer's payload hash for POST), but CloudFront consumes it when it SigV4-signs the origin
+ * request; it is not, and cannot be, allowlisted. CloudFront rejects X-Amz-* names in an origin
+ * request policy ("The parameter Headers contains x-amz-content-sha256 that is not allowed").
+ * https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html
+ */
+export const API_FORWARDED_HEADERS = ['Content-Type'] as const;
 
 /** Headers set as CloudFront "custom headers" (the rest map to its security-header fields). */
 const CUSTOM_HEADER_NAMES = ['permissions-policy', 'cross-origin-opener-policy', 'cross-origin-resource-policy'] as const;
@@ -112,7 +120,7 @@ export class SiteStack extends Stack {
     });
 
     const apiRequests = new OriginRequestPolicy(this, 'ApiOriginRequest', {
-      comment: 'Lazarus proof API: forward only what the handler and Lambda OAC need',
+      comment: 'Lazarus proof API: forward only Content-Type (OAC signs with the viewer x-amz-content-sha256)',
       headerBehavior: OriginRequestHeaderBehavior.allowList(...API_FORWARDED_HEADERS),
       queryStringBehavior: OriginRequestQueryStringBehavior.none(),
       cookieBehavior: OriginRequestCookieBehavior.none(),
