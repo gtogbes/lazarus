@@ -10,6 +10,14 @@ reproduces it.
 
 Built for the Kiroween 2026 hackathon (Resurrection category).
 
+## Hosted
+
+The lab runs at **https://lab.example.com**, with no login. "Prove it" runs real
+GnuCOBOL 3.1.2 on AWS Lambda and streams progress back. The API runs one proof at a
+time, so when it is busy the page offers a recorded proof instead. The demo
+(`/program/PAYROLL?demo=1`) replays recordings and never calls the API. Smoke-test
+results are in [ADR 0001](docs/adr/0001-proof-api-response-streaming.md).
+
 ## Status
 
 The equivalence harness works for three sample programs. Each TypeScript port

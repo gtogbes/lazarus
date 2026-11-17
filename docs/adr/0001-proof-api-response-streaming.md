@@ -1,6 +1,7 @@
-# ADR 0001: Proof API uses Lambda response streaming (provisional)
+# ADR 0001: Proof API uses Lambda response streaming
 
-- Status: Accepted, provisional until the real-AWS check in reanimation-lab task 22
+- Status: Accepted (2026-11-17, after the real-AWS check in reanimation-lab task 22).
+  The cancel check still waits on the owner's CloudWatch Logs query (see below).
 - Date: 2026-11-07
 - Spec: `.kiro/specs/reanimation-lab/` task 1 (Requirements 3.1, 3.2)
 - Region: us-east-1
@@ -39,7 +40,7 @@ read-only root, non-root user and memory size.
 So the image and RIC do their part: chunks leave the function in real time at
 4 Hz. The emulator's own HTTP front end is the only thing that buffered.
 
-## Not verified locally (task 22 must check on real AWS)
+## Not verified locally (checked on AWS in task 22, results below)
 1. A Function URL with `RESPONSE_STREAM` delivers the chunks incrementally to a
    client (first `progress` line well before the `result` line).
 2. The same through CloudFront with OAC on `/api/*`, with caching disabled.
@@ -52,6 +53,79 @@ So the image and RIC do their part: chunks leave the function in real time at
 Pass criterion for task 22: with a long run, the client logs at least 4
 `progress` lines per second, starting within 1 s of the request.
 If it fails: buffered fallback (one response with progress snapshots that the UI replays, labelled as such).
+
+## Real-AWS results (task 22, 2026-11-17)
+Both stacks deployed in us-east-1: site `https://lab.example.com` (CloudFront
+`<distribution>.cloudfront.net`), API on `POST /api/prove` through CloudFront to the
+Function URL. All checks used plain HTTPS from a laptop (curl and a Node
+`fetch` client that timestamps each NDJSON line as it arrives). No AWS API calls.
+Times are from sending the request.
+
+**1. Function URL streams, and 2. CloudFront does not buffer it: yes.** Every
+`progress` line arrived in its own chunk, about 250 ms after the one before it.
+The response had `transfer-encoding: chunked`, no `content-length`, no
+`content-encoding`, and `x-cache: Miss from cloudfront`.
+
+| Run (seed) | Headers and `started` | `progress` lines (arrival, cases) | `result` | Rate |
+|---|---|---|---|---|
+| PAYROLL (123), first request, cold | +2,403 ms | +2,404 (0), +2,690 (0), +3,087 (0), +3,247 (0), +3,392 (150), +3,739 (575), +3,922 (1,012), +4,182 (1,636), +4,284 (2,000) | +4,284 ms, equivalent, 2,000 cases, run 2,142 ms | 4.26/s |
+| PAYROLL (123), warm | +422 ms | +585 (577), +846 (1,241), +1,068 (2,000) | +1,068 ms, equivalent, 2,000 cases, run 738 ms | 4.14/s |
+| INTCALC (123), warm | +314 ms | +564 (633), +824 (1,337), +1,032 (2,000) | +1,032 ms, equivalent, 2,000 cases, run 724 ms | 4.27/s |
+| INTCALC (20261204), warm | +355 ms | +597 (781), +852 (1,455), +1,038 (2,000) | +1,038 ms, equivalent, 2,000 cases, run 691 ms | 4.54/s |
+| INVOICE `half-up-vat` (20261204) | +329 ms | +473 (636, shrinking) | +473 ms, diverged at case 86, 16 shrinks, run 152 ms | one snapshot |
+| INTCALC `truncate-interest` (20261204) | +317 ms | +424 (490, shrinking) | +424 ms, diverged at case 1, 244 shrinks, run 113 ms | one snapshot |
+| PAYROLL `half-up-tax` (123) | +313 ms | +331 (73, shrinking) | +331 ms, diverged, 12 shrinks, `shrinkPath` with 13 steps | one snapshot |
+
+Against the pass criterion: warm runs give 4.1 to 4.5 `progress` lines per second,
+with the first at 0.56 to 0.60 s. That passes. The cold first request also streamed
+at 4.26/s, but its first line arrived at 2.4 s, so it misses the 1 s part. The
+`started` line and the first `progress` line arrived together in that case, and
+the run itself took 2.1 s (warm runs take about 0.7 s).
+
+No run is "long" any more. With 2,000 cases fixed by the server, the slowest warm
+run is a real port at about 0.7 s, which gives three live `progress` lines. Every
+mutant finishes inside the first 250 ms tick, so the client sees one final
+snapshot and then the result. Lambda at 1,024 MB is about 5 times slower than the
+local spike (0.7 s against 140 ms), which helps here: real-port runs show live counters.
+
+**3. Status and content type on the viewer response: correct.**
+- A valid request gets `200 application/x-ndjson`, `started`, then `progress` lines
+  (with `cases` and `phase`), then `result`.
+- Unknown program, non-integer seed and invalid JSON each get `400 application/json`,
+  for example `{"error":"Unknown program"}`.
+- `content-type: text/plain` gets `415`, and GET gets `405` with `allow: POST`.
+- Without `x-amz-content-sha256`, or with a wrong hash, the response is `403` with
+  `x-cache: Error from cloudfront` and Lambda's "request signature we calculated
+  does not match" message. The web client always sends the header.
+- The Function URL called directly without a signature gets `403 {"Message":"Forbidden"}`.
+
+**Concurrency 1.** Three proofs sent at once: one `200`, and two
+`429 {"Reason":"ReservedFunctionConcurrentInvocationLimitExceeded","Type":"User","message":"Rate Exceeded."}`
+passed through CloudFront in about 0.3 s. In the browser, a Prove that got the 429 showed
+"Proof failed" with "The proof service answered HTTP 429", plus the offer to replay the
+recorded proof. The replay ended Alive, labelled "Recorded" with its date.
+
+**4. Cancel: pending the owner's log check.** Clients closed the connection mid-stream
+(after `started`, or after the first `progress` line) between 21:30:56Z and 21:32:33Z.
+These were the requests with IDs `<request-id-1>`,
+`<request-id-2>`, `<request-id-3>`,
+`<request-id-4>`, `<request-id-5>` and
+`<request-id-6>`, plus one at 21:31:26Z whose ID was not captured.
+A proof sent straight after each abort got `200` six times out of seven and `429`
+once. That does not settle it, because the abandoned run had at most about 0.4 s left
+and the new request spends about 0.3 s getting through CloudFront. The handler logs
+`proof cancelled` with the request ID when the abort reaches it. Otherwise it logs the
+normal outcome. The 25 s cap bounds the cost either way.
+
+**5. Cold start.** First request of the session: response headers at 2.40 s, against
+0.31 to 0.42 s warm, and the 2,000-case run took 2.1 s instead of 0.7 s. The `Init
+Duration` in the Lambda `REPORT` log line for that request
+(`<request-id-cold>`, 21:27:48Z) would split this into image start
+and slow first COBOL runs. It was not read, because reading it needs AWS credentials.
+
+**Decision.** Keep NDJSON over Lambda response streaming. The buffered fallback is not
+needed. The cold-start delay is accepted. It only affects the first visitor after a
+quiet spell, and that visitor still sees counters move at 4 Hz once the run starts.
 
 ## Consequences
 - A native 2,000-case INTCALC proof takes about 140 ms, so most live runs finish
