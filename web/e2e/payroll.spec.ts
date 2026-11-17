@@ -11,6 +11,8 @@ if (!halfUpTax) throw new Error('PAYROLL mutant half-up-tax not found');
 
 // A proof runs at most 25 s on the server (Requirement 3.6); the first one also starts a container.
 const PROOF_TIMEOUT = 60_000;
+// src/api/prove.ts REFERENCE_LABELS: the dev server runs the docker image, Lambda the baked native binaries.
+const REFERENCE = process.env.E2E_BASE_URL ? /Reference\s*gnucobol 3\.1\.2 \(native\)/ : /Reference\s*lazarus-gnucobol:3\.1\.2/;
 
 test('PAYROLL: prove the port, sabotage it, and read the counterexample', async ({ page }) => {
   await page.goto('/morgue');
@@ -29,7 +31,7 @@ test('PAYROLL: prove the port, sabotage it, and read the counterexample', async 
   const summary = provePanel.getByTestId('proof-summary');
   await expect(summary).toContainText(/[\d,]+ cases matched GnuCOBOL record for record\./);
   await expect(summary).toContainText(/Seed\s*-?\d+/);
-  await expect(summary).toContainText(/Reference\s*lazarus-gnucobol:3\.1\.2/);
+  await expect(summary).toContainText(REFERENCE);
 
   // Requirement 4.1, 4.3: pick the mutant by its plain-English title and see its diff.
   const sabotage = page.getByRole('region', { name: 'Sabotage the port' });
