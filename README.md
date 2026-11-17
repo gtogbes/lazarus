@@ -12,11 +12,26 @@ Built for the Kiroween 2026 hackathon (Resurrection category).
 
 ## Hosted
 
-The lab runs at **https://lab.example.com**, with no login. "Prove it" runs real
+The lab is hosted on AWS (S3 and CloudFront, with the proof API on Lambda), with
+no login. The public URL is in the hackathon submission. "Prove it" runs real
 GnuCOBOL 3.1.2 on AWS Lambda and streams progress back. The API runs one proof at a
 time, so when it is busy the page offers a recorded proof instead. The demo
 (`/program/PAYROLL?demo=1`) replays recordings and never calls the API. Smoke-test
 results are in [ADR 0001](docs/adr/0001-proof-api-response-streaming.md).
+
+To deploy your own copy (from `infra/`, after `npm run web:build` at the root):
+
+```sh
+npx cdk deploy --all -c budgetEmail=you@example.com
+# Optional custom domain in an existing Route 53 public zone:
+npx cdk deploy --all -c budgetEmail=you@example.com \
+  -c domainName=lab.example.com -c hostedZoneDomain=example.com -c hostedZoneId=Z0123456789ABCDEFGHIJ
+```
+
+Without a domain the site is served on its `*.cloudfront.net` address. The domain
+can also come from `LAZARUS_DOMAIN`, `LAZARUS_HOSTED_ZONE_DOMAIN` and
+`LAZARUS_HOSTED_ZONE_ID`. CDK's context cache file in `infra/` (written by the zone
+lookup; it holds the account id) is gitignored.
 
 ## Status
 

@@ -7,8 +7,10 @@ import {
   BUDGET_EMAIL_CONTEXT,
   DOMAIN_NAME_CONTEXT,
   HOSTED_ZONE_DOMAIN_CONTEXT,
+  HOSTED_ZONE_ID_CONTEXT,
   REGION,
   resolveBudgetEmail,
+  resolveHostedZoneId,
   resolveSiteDomain,
   TAGS,
 } from './config.js';
@@ -21,7 +23,10 @@ export interface LazarusAppOptions {
   /** Overrides for tests. */
   readonly siteDir?: string;
   readonly env?: NodeJS.ProcessEnv;
-  /** Import the hosted zone by id instead of looking it up (tests, no AWS credentials). */
+  /**
+   * Import the hosted zone by id instead of looking it up (tests, no AWS credentials).
+   * Overrides `-c hostedZoneId`; ignored when no custom domain is set.
+   */
   readonly hostedZoneId?: string;
 }
 
@@ -38,7 +43,13 @@ export function buildApp(options: LazarusAppOptions = {}): LazarusApp {
   const domain = resolveSiteDomain(
     app.node.tryGetContext(DOMAIN_NAME_CONTEXT),
     app.node.tryGetContext(HOSTED_ZONE_DOMAIN_CONTEXT),
+    env,
   );
+  const contextZoneId = resolveHostedZoneId(app.node.tryGetContext(HOSTED_ZONE_ID_CONTEXT), env);
+  if (contextZoneId !== undefined && domain === undefined) {
+    throw new Error(`${HOSTED_ZONE_ID_CONTEXT} is set but the custom domain is not (domainName / hostedZoneDomain).`);
+  }
+  const hostedZoneId = domain === undefined ? undefined : (options.hostedZoneId ?? contextZoneId);
   // Account from the CLI's credentials at synth time; never hardcoded.
   const stackEnv = { account: env.CDK_DEFAULT_ACCOUNT, region: REGION };
 
@@ -51,9 +62,9 @@ export function buildApp(options: LazarusAppOptions = {}): LazarusApp {
     env: stackEnv,
     description: 'Lazarus reanimation lab: S3 + CloudFront, /api/* to the proof API',
     functionUrl: proofApi.functionUrl,
-    domain,
+    ...(domain === undefined ? {} : { domain }),
     ...(options.siteDir === undefined ? {} : { siteDir: options.siteDir }),
-    ...(options.hostedZoneId === undefined ? {} : { hostedZoneId: options.hostedZoneId }),
+    ...(hostedZoneId === undefined ? {} : { hostedZoneId }),
   });
 
   for (const [key, value] of Object.entries(TAGS)) Tags.of(app).add(key, value);

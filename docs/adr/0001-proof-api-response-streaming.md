@@ -1,7 +1,7 @@
 # ADR 0001: Proof API uses Lambda response streaming
 
 - Status: Accepted (2026-11-17, after the real-AWS check in reanimation-lab task 22).
-  The cancel check still waits on the owner's CloudWatch Logs query (see below).
+  Cancel propagation is not verified on AWS: the owner's log search found no events (see below).
 - Date: 2026-11-07
 - Spec: `.kiro/specs/reanimation-lab/` task 1 (Requirements 3.1, 3.2)
 - Region: us-east-1
@@ -55,9 +55,9 @@ Pass criterion for task 22: with a long run, the client logs at least 4
 If it fails: buffered fallback (one response with progress snapshots that the UI replays, labelled as such).
 
 ## Real-AWS results (task 22, 2026-11-17)
-Both stacks deployed in us-east-1: site `https://lab.example.com` (CloudFront
-`<distribution>.cloudfront.net`), API on `POST /api/prove` through CloudFront to the
-Function URL. All checks used plain HTTPS from a laptop (curl and a Node
+Both stacks deployed in us-east-1: site on the owner's custom domain (`https://lab.example.com`
+here; CloudFront `<distribution>.cloudfront.net`), API on `POST /api/prove` through CloudFront to the
+Function URL. Account, domain and resource identifiers are left out of this record. All checks used plain HTTPS from a laptop (curl and a Node
 `fetch` client that timestamps each NDJSON line as it arrives). No AWS API calls.
 Times are from sending the request.
 
@@ -105,17 +105,19 @@ passed through CloudFront in about 0.3 s. In the browser, a Prove that got the 4
 "Proof failed" with "The proof service answered HTTP 429", plus the offer to replay the
 recorded proof. The replay ended Alive, labelled "Recorded" with its date.
 
-**4. Cancel: pending the owner's log check.** Clients closed the connection mid-stream
-(after `started`, or after the first `progress` line) between 21:30:56Z and 21:32:33Z.
-These were the requests with IDs `<request-id-1>`,
-`<request-id-2>`, `<request-id-3>`,
-`<request-id-4>`, `<request-id-5>` and
-`<request-id-6>`, plus one at 21:31:26Z whose ID was not captured.
-A proof sent straight after each abort got `200` six times out of seven and `429`
-once. That does not settle it, because the abandoned run had at most about 0.4 s left
-and the new request spends about 0.3 s getting through CloudFront. The handler logs
-`proof cancelled` with the request ID when the abort reaches it. Otherwise it logs the
-normal outcome. The 25 s cap bounds the cost either way.
+**4. Cancel: not verified on AWS.** Clients closed the connection mid-stream
+(after `started`, or after the first `progress` line) seven times between 21:30:56Z
+and 21:32:33Z (request IDs `<request-id-1>` to `<request-id-6>`, plus one whose ID
+was not captured). A proof sent straight after each abort got `200` six times out
+of seven and `429` once. That does not settle it, because the abandoned run had at
+most about 0.4 s left and the new request spends about 0.3 s getting through
+CloudFront. The handler logs `proof cancelled` with the request ID when the abort
+reaches it. The owner's CloudWatch Logs `filter-log-events` search of the function's
+log group for "proof cancelled" over that window returned
+`{"events": [], "searchedLogStreams": []}`, so no log event shows an abort reaching
+the handler. Cancel propagation through CloudFront to the function stays unverified.
+The cost of an abandoned run is bounded either way: the 25 s run cap ends it, and
+reserved concurrency 1 means at most one such run at a time.
 
 **5. Cold start.** First request of the session: response headers at 2.40 s, against
 0.31 to 0.42 s warm, and the 2,000-case run took 2.1 s instead of 0.7 s. The `Init

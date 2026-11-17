@@ -2,3 +2,7 @@
 cdk.out/
 # Saved `cdk diff` output: contains the account id; review locally, do not commit
 cdk-diff*.txt
+# CDK lookup cache: holds the account id and hosted zone id
+cdk.context.json
+# The owner's real deploy commands (domain, zone id); never commit
+*.local.md

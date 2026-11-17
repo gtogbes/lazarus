@@ -16,9 +16,11 @@
  * No WAF (owner decision, task 21): its fixed monthly charge would use the whole
  * budget. See the AwsSolutions-CFR2 acknowledgement in nag-suppressions.ts.
  *
- * Custom domain (task 22): an ACM certificate validated by DNS in the existing
+ * Optional custom domain (task 22): an ACM certificate validated by DNS in the existing
  * Route 53 zone, the name as a distribution alias with TLSv1.2_2021, and A/AAAA
  * alias records. The stack is in us-east-1, where CloudFront requires the certificate.
+ * Without a domain the site is served on the distribution's own CloudFront domain
+ * with the default certificate (AwsSolutions-CFR4 acknowledged in nag-suppressions.ts).
  */
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from 'aws-cdk-lib';
 import { Certificate, CertificateValidation } from 'aws-cdk-lib/aws-certificatemanager';
@@ -60,10 +62,12 @@ export interface SiteStackProps extends StackProps {
   readonly functionUrl: IFunctionUrl;
   /** Directory with the production web build. Defaults to web/dist. */
   readonly siteDir?: string;
-  readonly domain: SiteDomain;
+  /** Custom domain. When unset, the site uses the CloudFront domain and default certificate. */
+  readonly domain?: SiteDomain;
   /**
    * Hosted zone id for `domain.hostedZoneDomain`. When set, the zone is imported by id and no
-   * lookup happens (tests). When unset, it is looked up at synth time and cached in cdk.context.json.
+   * lookup happens. When unset, it is looked up at synth time and cached in CDK's context cache
+   * file (gitignored: it holds the account id and zone id).
    */
   readonly hostedZoneId?: string;
 }
@@ -90,9 +94,12 @@ function header(name: string): string {
 
 export class SiteStack extends Stack {
   readonly distribution: Distribution;
+  /** False when the site is served on the CloudFront domain with the default certificate. */
+  readonly hasCustomDomain: boolean;
 
   constructor(scope: Construct, id: string, props: SiteStackProps) {
     super(scope, id, props);
+    this.hasCustomDomain = props.domain !== undefined;
     const siteDir = props.siteDir ?? DEFAULT_SITE_DIR;
     assertSiteBuilt(siteDir);
 
@@ -155,22 +162,17 @@ export class SiteStack extends Stack {
       compress: false,
     };
 
-    const { domainName, hostedZoneDomain } = props.domain;
-    const zone: IHostedZone =
-      props.hostedZoneId === undefined
-        ? HostedZone.fromLookup(this, 'Zone', { domainName: hostedZoneDomain })
-        : HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId: props.hostedZoneId, zoneName: hostedZoneDomain });
-
-    const certificate = new Certificate(this, 'Certificate', {
-      domainName,
-      validation: CertificateValidation.fromDns(zone),
-    });
+    const custom = props.domain === undefined ? undefined : this.customDomain(props.domain, props.hostedZoneId);
 
     this.distribution = new Distribution(this, 'Site', {
       comment: 'Lazarus reanimation lab',
-      domainNames: [domainName],
-      certificate,
-      minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+      ...(custom === undefined
+        ? {}
+        : {
+            domainNames: [custom.domainName],
+            certificate: custom.certificate,
+            minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
+          }),
       defaultRootObject: 'index.html',
       priceClass: PriceClass.PRICE_CLASS_100,
       httpVersion: HttpVersion.HTTP2_AND_3,
@@ -188,14 +190,19 @@ export class SiteStack extends Stack {
       additionalBehaviors: { '/api/*': api },
     });
 
-    const target = RecordTarget.fromAlias(new CloudFrontTarget(this.distribution));
-    new ARecord(this, 'AliasA', { zone, recordName: domainName, target });
-    new AaaaRecord(this, 'AliasAAAA', { zone, recordName: domainName, target });
+    if (custom !== undefined) {
+      const target = RecordTarget.fromAlias(new CloudFrontTarget(this.distribution));
+      new ARecord(this, 'AliasA', { zone: custom.zone, recordName: custom.domainName, target });
+      new AaaaRecord(this, 'AliasAAAA', { zone: custom.zone, recordName: custom.domainName, target });
+    }
 
-    new CfnOutput(this, 'SiteUrl', { value: `https://${domainName}`, description: 'The lab' });
+    new CfnOutput(this, 'SiteUrl', {
+      value: `https://${custom?.domainName ?? this.distribution.distributionDomainName}`,
+      description: 'The lab',
+    });
     new CfnOutput(this, 'DistributionDomainName', {
       value: this.distribution.distributionDomainName,
-      description: 'CloudFront domain (the alias records point here)',
+      description: 'CloudFront domain (the alias records point here when a custom domain is set)',
     });
 
     const deployLogs = new LogGroup(this, 'DeployLogs', {
@@ -229,5 +236,22 @@ export class SiteStack extends Stack {
     });
     // index.html must never reference assets that are not uploaded yet.
     pages.node.addDependency(assets);
+  }
+
+  /** The hosted zone and a DNS-validated ACM certificate for the custom domain. */
+  private customDomain(
+    domain: SiteDomain,
+    hostedZoneId: string | undefined,
+  ): { readonly domainName: string; readonly zone: IHostedZone; readonly certificate: Certificate } {
+    const { domainName, hostedZoneDomain } = domain;
+    const zone: IHostedZone =
+      hostedZoneId === undefined
+        ? HostedZone.fromLookup(this, 'Zone', { domainName: hostedZoneDomain })
+        : HostedZone.fromHostedZoneAttributes(this, 'Zone', { hostedZoneId, zoneName: hostedZoneDomain });
+    const certificate = new Certificate(this, 'Certificate', {
+      domainName,
+      validation: CertificateValidation.fromDns(zone),
+    });
+    return { domainName, zone, certificate };
   }
 }

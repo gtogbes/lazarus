@@ -1,6 +1,15 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { BUDGET_EMAIL_ENV, resolveBudgetEmail, resolveSiteDomain, REPO_ROOT } from '../lib/config.js';
+import {
+  BUDGET_EMAIL_ENV,
+  DOMAIN_NAME_ENV,
+  HOSTED_ZONE_DOMAIN_ENV,
+  HOSTED_ZONE_ID_ENV,
+  resolveBudgetEmail,
+  resolveHostedZoneId,
+  resolveSiteDomain,
+  REPO_ROOT,
+} from '../lib/config.js';
 import { lambdaContextExcludes } from '../lib/docker-context.js';
 import { loadSpaRewrite } from '../lib/spa-rewrite.js';
 
@@ -25,12 +34,32 @@ describe('resolveSiteDomain', () => {
     });
   });
 
-  it('throws when missing, malformed, or outside the zone', () => {
+  it('is optional: undefined when neither part is set', () => {
+    expect(resolveSiteDomain(undefined, undefined, {})).toBeUndefined();
+    expect(resolveSiteDomain('', ' ', {})).toBeUndefined();
+  });
+
+  it('falls back to LAZARUS_DOMAIN and LAZARUS_HOSTED_ZONE_DOMAIN', () => {
+    const env = { [DOMAIN_NAME_ENV]: 'lab.example.com', [HOSTED_ZONE_DOMAIN_ENV]: 'example.com' };
+    expect(resolveSiteDomain(undefined, undefined, env)).toEqual({ domainName: 'lab.example.com', hostedZoneDomain: 'example.com' });
+    expect(resolveSiteDomain('other.example.com', undefined, env)?.domainName).toBe('other.example.com');
+  });
+
+  it('throws when only one part is set, malformed, or outside the zone', () => {
     expect(() => resolveSiteDomain(undefined, 'example.com')).toThrow(/-c domainName=.*hostedZoneDomain=/);
-    expect(() => resolveSiteDomain('lazarus.example.com', '')).toThrow(/Missing the site domain/);
+    expect(() => resolveSiteDomain('lazarus.example.com', '')).toThrow(/needs both parts/);
     expect(() => resolveSiteDomain('bad_name.example.com', 'example.com')).toThrow(/not a valid DNS name/);
     expect(() => resolveSiteDomain('lazarus.example.org', 'example.com')).toThrow(/not inside the hosted zone/);
     expect(() => resolveSiteDomain('lazarusexample.com', 'example.com')).toThrow(/not inside the hosted zone/);
+  });
+});
+
+describe('resolveHostedZoneId', () => {
+  it('is optional, accepts the /hostedzone/ prefix, and rejects malformed ids', () => {
+    expect(resolveHostedZoneId(undefined, {})).toBeUndefined();
+    expect(resolveHostedZoneId('/hostedzone/Z0000000000TESTZONE')).toBe('Z0000000000TESTZONE');
+    expect(resolveHostedZoneId(undefined, { [HOSTED_ZONE_ID_ENV]: 'Z123' })).toBe('Z123');
+    expect(() => resolveHostedZoneId('not-a-zone')).toThrow(/not a Route 53 hosted zone id/);
   });
 });
 

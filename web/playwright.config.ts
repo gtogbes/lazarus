@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Needs Docker running and the `lazarus-gnucobol:3.1.2` image (`npm run cobol:image`).
  * Run with `npm run test:e2e -w web`. Not part of `npm test -w web` (Vitest), which stays Docker-free.
  *
- * `E2E_BASE_URL=https://lab.example.com` runs the specs against a deployed site instead and
+ * `E2E_BASE_URL=https://lab.example.com` (the deployed site's URL) runs the specs against a deployed site instead and
  * starts no local servers. The hosted proof API has reserved concurrency 1, so keep one worker
  * and pick specs with care (no perf or video runs against production).
  */

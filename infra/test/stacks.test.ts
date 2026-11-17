@@ -385,7 +385,28 @@ describe('the app', () => {
     ).toThrow(/npm run web:build/);
   });
 
-  it('fails synth with instructions when the site domain is missing', () => {
-    expect(() => build({ budgetEmail: EMAIL })).toThrow(/-c domainName=.*hostedZoneDomain=/);
+  it('without a custom domain, serves the CloudFront domain with the default certificate and passes cdk-nag', () => {
+    const plain = build({ budgetEmail: EMAIL });
+    const template = Template.fromStack(plain.site);
+    template.resourceCountIs('AWS::CertificateManager::Certificate', 0);
+    template.resourceCountIs('AWS::Route53::RecordSet', 0);
+    const [dist] = Object.values(template.findResources('AWS::CloudFront::Distribution'));
+    const config = dist?.['Properties'].DistributionConfig;
+    expect(config.Aliases).toBeUndefined();
+    expect(config.ViewerCertificate).toBeUndefined();
+    const distId = Object.keys(template.findResources('AWS::CloudFront::Distribution'))[0];
+    expect(template.toJSON()['Outputs']['SiteUrl'].Value).toEqual({
+      'Fn::Join': ['', ['https://', { 'Fn::GetAtt': [distId, 'DomainName'] }]],
+    });
+    const report = JSON.parse(readFileSync(join(plain.app.synth().directory, 'validation-report.json'), 'utf8')) as {
+      pluginReports: { pluginName: string; conclusion: string; violations: unknown[] }[];
+    };
+    const nag = report.pluginReports.find((r) => r.pluginName === 'AwsSolutions');
+    expect(nag?.conclusion).toBe('success');
+    expect(nag?.violations).toEqual([]);
+  });
+
+  it('fails synth when only half of the custom domain is given', () => {
+    expect(() => build({ budgetEmail: EMAIL, domainName: DOMAIN.domainName })).toThrow(/needs both parts/);
   });
 });

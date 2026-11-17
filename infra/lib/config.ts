@@ -27,9 +27,16 @@ export const PROOF_API = {
   logRetentionDays: 90,
 } as const;
 
-/** CDK context keys for the site's custom domain (defaults in cdk.json). */
+/**
+ * CDK context keys and environment variables for the optional custom domain. Never stored in
+ * the repo: pass them at synth/deploy time. Without them the site uses the CloudFront domain.
+ */
 export const DOMAIN_NAME_CONTEXT = 'domainName';
 export const HOSTED_ZONE_DOMAIN_CONTEXT = 'hostedZoneDomain';
+export const HOSTED_ZONE_ID_CONTEXT = 'hostedZoneId';
+export const DOMAIN_NAME_ENV = 'LAZARUS_DOMAIN';
+export const HOSTED_ZONE_DOMAIN_ENV = 'LAZARUS_HOSTED_ZONE_DOMAIN';
+export const HOSTED_ZONE_ID_ENV = 'LAZARUS_HOSTED_ZONE_ID';
 
 export interface SiteDomain {
   /** The site's host name, e.g. lab.example.com. */
@@ -39,18 +46,32 @@ export interface SiteDomain {
 }
 
 const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+/** A Route 53 hosted zone id: upper-case letters and digits. */
+const ZONE_ID = /^Z[A-Z0-9]{1,31}$/;
+
+function contextOrEnv(contextValue: unknown, envValue: string | undefined): string {
+  const raw = typeof contextValue === 'string' && contextValue.trim() !== '' ? contextValue : (envValue ?? '');
+  return raw.trim();
+}
 
 /**
- * The custom domain from CDK context (`-c domainName=... -c hostedZoneDomain=...`).
- * Throws when either is missing, malformed, or the name is not inside the zone.
+ * The optional custom domain from CDK context (`-c domainName=... -c hostedZoneDomain=...`)
+ * or LAZARUS_DOMAIN / LAZARUS_HOSTED_ZONE_DOMAIN. Returns undefined when neither is set.
+ * Throws when only one is set, either is malformed, or the name is not inside the zone.
  */
-export function resolveSiteDomain(domainName: unknown, hostedZoneDomain: unknown): SiteDomain {
-  const name = typeof domainName === 'string' ? domainName.trim().toLowerCase().replace(/\.$/, '') : '';
-  const zone = typeof hostedZoneDomain === 'string' ? hostedZoneDomain.trim().toLowerCase().replace(/\.$/, '') : '';
+export function resolveSiteDomain(
+  domainName: unknown,
+  hostedZoneDomain: unknown,
+  env: NodeJS.ProcessEnv = {},
+): SiteDomain | undefined {
+  const name = contextOrEnv(domainName, env[DOMAIN_NAME_ENV]).toLowerCase().replace(/\.$/, '');
+  const zone = contextOrEnv(hostedZoneDomain, env[HOSTED_ZONE_DOMAIN_ENV]).toLowerCase().replace(/\.$/, '');
+  if (!name && !zone) return undefined;
   if (!name || !zone) {
     throw new Error(
-      `Missing the site domain. Set it with \`-c ${DOMAIN_NAME_CONTEXT}=lazarus.example.com ` +
-        `-c ${HOSTED_ZONE_DOMAIN_CONTEXT}=example.com\` (defaults live in infra/cdk.json).`,
+      `A custom domain needs both parts: \`-c ${DOMAIN_NAME_CONTEXT}=lab.example.com ` +
+        `-c ${HOSTED_ZONE_DOMAIN_CONTEXT}=example.com\` (or ${DOMAIN_NAME_ENV} and ${HOSTED_ZONE_DOMAIN_ENV}). ` +
+        `Leave both unset to use the CloudFront domain.`,
     );
   }
   for (const value of [name, zone]) if (!HOST.test(value)) throw new Error(`"${value}" is not a valid DNS name.`);
@@ -58,6 +79,17 @@ export function resolveSiteDomain(domainName: unknown, hostedZoneDomain: unknown
     throw new Error(`The site domain "${name}" is not inside the hosted zone "${zone}".`);
   }
   return { domainName: name, hostedZoneDomain: zone };
+}
+
+/**
+ * Optional hosted zone id (`-c hostedZoneId=...` or LAZARUS_HOSTED_ZONE_ID). When set, the zone
+ * is imported by id and synth needs no Route 53 lookup (and writes nothing to CDK's context cache).
+ */
+export function resolveHostedZoneId(contextValue: unknown, env: NodeJS.ProcessEnv = {}): string | undefined {
+  const value = contextOrEnv(contextValue, env[HOSTED_ZONE_ID_ENV]).replace(/^\/hostedzone\//, '');
+  if (!value) return undefined;
+  if (!ZONE_ID.test(value)) throw new Error(`"${value}" is not a Route 53 hosted zone id.`);
+  return value;
 }
 
 /** CDK context key and environment variable for the budget alert address. */

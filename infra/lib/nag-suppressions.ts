@@ -5,6 +5,7 @@
  */
 import { Token, Validations, type Stack } from 'aws-cdk-lib';
 import type { IConstruct } from 'constructs';
+import type { SiteStack } from './site-stack.js';
 
 function ack(scope: IConstruct, id: string, reason: string): void {
   Validations.of(scope).acknowledge({ id, reason });
@@ -23,7 +24,7 @@ function bucketDeploymentHandler(site: Stack): IConstruct {
   return found;
 }
 
-export function addNagSuppressions(_proofApi: Stack, site: Stack): void {
+export function addNagSuppressions(_proofApi: Stack, site: SiteStack): void {
   const bucket = child(site, 'SiteBucket');
   ack(
     bucket,
@@ -50,6 +51,14 @@ export function addNagSuppressions(_proofApi: Stack, site: Stack): void {
     'AwsSolutions::AwsSolutions-CFR1',
     'Requirement 8.1: the lab is open to judges anywhere, so no geo restriction.',
   );
+  if (!site.hasCustomDomain) {
+    ack(
+      distribution,
+      'AwsSolutions::AwsSolutions-CFR4',
+      'No custom domain was given at synth, so the site uses the default *.cloudfront.net certificate, whose minimum ' +
+        'protocol CloudFront fixes at TLSv1. Pass domainName and hostedZoneDomain to get an ACM certificate with TLSv1.2_2021.',
+    );
+  }
   ack(
     distribution,
     'Annotation::@aws-cdk/aws-cloudfront-origins:listBucketSecurityRisk',
