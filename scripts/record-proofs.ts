@@ -21,10 +21,17 @@
  *
  *   npm run record:proofs                         # docker runner (local reference image)
  *   LAZARUS_RUNNER=native npm run record:proofs   # binaries in LAZARUS_BIN_DIR
+ *   npm run record:proofs -- --warm-up INTCALC.json   # only the named files, warmed first
+ *   npm run record:proofs -- --out-dir /tmp/rec ...   # write elsewhere, to compare first
+ *
+ * File names select targets; with none, every target is recorded. `--warm-up`
+ * runs and discards one proof of each selected program's real port first, so the
+ * first recording does not carry a cold container's start-up in its duration.
  */
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
 import type { CobolRunner } from '../src/harness/cobol.js';
 import { prove, type ProveEvent, type ProveOptions } from '../src/api/prove.js';
 import type { Mutant } from '../src/ports/mutant.js';
@@ -175,6 +182,8 @@ export interface RecordAllOptions {
   readonly targets?: readonly RecordingTarget[];
   readonly prove?: ProveOptions;
   readonly log?: (line: string) => void;
+  /** Run and discard one proof of each target program's real port first (see the header). */
+  readonly warmUp?: boolean;
 }
 
 export interface RecordAllReport {
@@ -190,8 +199,22 @@ export async function recordAll(options: RecordAllOptions = {}): Promise<RecordA
   const written: string[] = [];
   const failures: { file: string; problems: string[] }[] = [];
   await mkdir(outDir, { recursive: true });
+  const targets = options.targets ?? recordingTargets();
 
-  for (const target of options.targets ?? recordingTargets()) {
+  if (options.warmUp) {
+    for (const program of new Set(targets.map((t) => t.program))) {
+      try {
+        const warm = await recordProof({ program }, options.prove);
+        const last = warm.events.at(-1);
+        log(`warm ${program.id}: discarded a proof${last?.type === 'result' ? ` of ${last.result.durationMs} ms` : ''}`);
+      } catch (error) {
+        // The recording of this program will fail the same way and be reported then.
+        log(`warm ${program.id}: the warm-up proof failed (${error instanceof Error ? error.message : String(error)})`);
+      }
+    }
+  }
+
+  for (const target of targets) {
     const file = recordingFileName(target);
     let recording: RecordingFile;
     try {
@@ -231,14 +254,53 @@ function parseRunner(value: string | undefined): CobolRunner {
   throw new Error(`LAZARUS_RUNNER must be "docker" or "native", got ${JSON.stringify(value)}`);
 }
 
+export interface CliOptions {
+  readonly warmUp: boolean;
+  readonly targets: readonly RecordingTarget[];
+  /** Where to write; RECORDED_DIR when not given. */
+  readonly outDir?: string;
+}
+
+/** `[--warm-up] [--out-dir <dir>] [<file>.json ...]`. Throws on an unknown option or file name. */
+export function parseCli(args: readonly string[], all: readonly RecordingTarget[] = recordingTargets()): CliOptions {
+  const { values, positionals } = parseArgs({
+    args: [...args],
+    options: { 'warm-up': { type: 'boolean', default: false }, 'out-dir': { type: 'string' } },
+    allowPositionals: true,
+    strict: true,
+  });
+  const byFile = new Map(all.map((target) => [recordingFileName(target), target]));
+  const unknown = positionals.filter((file) => !byFile.has(file));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown recording ${unknown.join(', ')}; expected one of ${[...byFile.keys()].join(', ')}`);
+  }
+  const wanted = new Set(positionals);
+  return {
+    warmUp: values['warm-up'] === true,
+    targets: wanted.size === 0 ? all : all.filter((target) => wanted.has(recordingFileName(target))),
+    ...(values['out-dir'] === undefined ? {} : { outDir: path.resolve(values['out-dir']) }),
+  };
+}
+
 async function main(): Promise<void> {
   // The harness lets these override the case count and seed, which would make the recordings lie.
   for (const name of ['LAZARUS_RUNS', 'LAZARUS_SEED']) {
     if (process.env[name]) throw new Error(`Unset ${name} before recording proofs.`);
   }
   const runner = parseRunner(process.env.LAZARUS_RUNNER);
-  console.log(`Recording proofs with the ${runner} runner and seed ${RECORDING_SEED} into ${RECORDED_DIR}`);
-  const report = await recordAll({ prove: { runner }, log: (line) => console.log(line) });
+  const cli = parseCli(process.argv.slice(2));
+  const outDir = cli.outDir ?? RECORDED_DIR;
+  console.log(
+    `Recording ${cli.targets.length} proofs with the ${runner} runner and seed ${RECORDING_SEED} into ${outDir}` +
+      (cli.warmUp ? ', after a warm-up' : ''),
+  );
+  const report = await recordAll({
+    outDir,
+    prove: { runner },
+    targets: cli.targets,
+    warmUp: cli.warmUp,
+    log: (line) => console.log(line),
+  });
   console.log(`${report.written.length} written, ${report.failures.length} failed.`);
   if (report.failures.length > 0) process.exitCode = 1;
 }

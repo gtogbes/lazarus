@@ -9,6 +9,7 @@ import { findProgram, PROGRAMS } from '../src/ports/registry.js';
 import {
   checkRecording,
   expectedStatus,
+  parseCli,
   RECORDED_DIR,
   recordAll,
   recordingFileName,
@@ -174,6 +175,43 @@ describe('recordAll with a fake GnuCOBOL session', () => {
     expect(await readdir(outDir)).toEqual([]);
   });
 
+  it('with warmUp, runs and discards one real-port proof per program before recording', async () => {
+    const sessions: string[] = [];
+    const base = fakeProve();
+    const log: string[] = [];
+    const intcalc = findProgram('INTCALC')!;
+    const report = await recordAll({
+      outDir,
+      warmUp: true,
+      targets: [{ program: intcalc }, { program: intcalc, mutant: intcalc.mutants[0]! }],
+      prove: {
+        ...base,
+        startSession: (program, ...rest) => {
+          sessions.push(program);
+          return base.startSession!(program, ...rest);
+        },
+      },
+      log: (line) => log.push(line),
+    });
+    expect(report.failures).toEqual([]);
+    // One warm-up session for INTCALC, then one per recording.
+    expect(sessions).toEqual(['INTCALC', 'INTCALC', 'INTCALC']);
+    expect(log[0]).toMatch(/^warm INTCALC: discarded a proof of \d+ ms$/);
+    expect(report.written).toEqual(['INTCALC.json', 'INTCALC.truncate-interest.json']);
+    expect((await readdir(outDir)).sort()).toEqual(['INTCALC.json', 'INTCALC.truncate-interest.json']);
+  });
+
+  it('without warmUp, starts exactly one session per recording', async () => {
+    const sessions: string[] = [];
+    const base = fakeProve();
+    await recordAll({
+      outDir,
+      targets: [{ program: findProgram('INTCALC')! }],
+      prove: { ...base, startSession: (program, ...rest) => (sessions.push(program), base.startSession!(program, ...rest)) },
+    });
+    expect(sessions).toEqual(['INTCALC']);
+  });
+
   it('reports a failed run instead of writing it', async () => {
     const report = await recordAll({
       outDir,
@@ -188,6 +226,28 @@ describe('recordAll with a fake GnuCOBOL session', () => {
     expect(report.written).toEqual([]);
     expect(report.failures[0]?.problems[0]).toContain('the proof run failed');
     expect(await readdir(outDir)).toEqual([]);
+  });
+});
+
+describe('parseCli', () => {
+  it('records everything, cold, with no arguments', () => {
+    expect(parseCli([])).toEqual({ warmUp: false, targets: recordingTargets() });
+  });
+
+  it('selects the named files, in registry order, and the warm-up', () => {
+    const cli = parseCli(['INTCALC.penalty-at-zero.json', '--warm-up', 'INTCALC.json']);
+    expect(cli.warmUp).toBe(true);
+    expect(cli.targets.map(recordingFileName)).toEqual(['INTCALC.json', 'INTCALC.penalty-at-zero.json']);
+    expect(cli.outDir).toBeUndefined();
+  });
+
+  it('takes an output directory, so a recording can be checked before it replaces a shipped one', () => {
+    expect(parseCli(['--out-dir', 'tmp/rec']).outDir).toBe(path.resolve('tmp/rec'));
+  });
+
+  it('rejects unknown files and options', () => {
+    expect(() => parseCli(['NOPE.json'])).toThrow(/Unknown recording NOPE\.json/);
+    expect(() => parseCli(['--seed', '1'])).toThrow();
   });
 });
 
