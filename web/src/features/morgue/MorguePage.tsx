@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { PROGRAM_META, type ProgramMeta } from '../../../../src/ports/programs.meta';
 import { PANEL } from '../../app/surface';
 import { DemoButton } from '../demo/DemoButton';
+import { ProgramSummary } from '../program/ProgramSummary';
 import { useSceneNudge } from '../../scene/sceneNudge';
 import type { RecordedProof } from './recordedProof';
 import { useRecordedProofs } from './useRecordedProofs';
@@ -83,9 +84,7 @@ function ProgramCard({ program, proof, index }: ProgramCardProps) {
         </Link>
       </h2>
       <p className="mt-1 text-zinc-300">{program.description}</p>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-300" data-testid="program-summary">
-        {program.summary}
-      </p>
+      <ProgramSummary summary={program.summary} className="mt-2" />
       <ul aria-label="COBOL behaviours" className="mt-3 flex flex-wrap gap-2">
         {program.behaviours.map((behaviour) => (
           <li key={behaviour} className="rounded bg-zinc-800 px-2 py-0.5 text-sm text-zinc-200">

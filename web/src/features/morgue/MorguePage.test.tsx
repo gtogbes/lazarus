@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PROGRAM_META } from '../../../../src/ports/programs.meta';
 import { routes } from '../../app/routes';
 import { useSceneNudge } from '../../scene/sceneNudge';
+import { summaryExcerpt } from '../program/summaryExcerpt';
 import { recordingOf } from '../proof/testing';
 
 const PAYROLL_PROOF = {
@@ -61,12 +62,34 @@ afterEach(() => {
 });
 
 describe('morgue', () => {
-  it('explains what each program does in plain English', () => {
+  it('explains what each program does in plain English, first sentence shown and the rest behind Read more', () => {
     serveRecorded({});
     renderMorgue();
     for (const program of PROGRAM_META) {
-      expect(within(card(program.id)).getByTestId('program-summary')).toHaveTextContent(program.summary);
+      const { lead, rest } = summaryExcerpt(program.summary);
+      const summary = within(card(program.id)).getByTestId('program-summary');
+      expect(within(summary).getByTestId('program-summary-lead')).toHaveTextContent(lead);
+      expect(within(summary).getByTestId('program-summary-rest')).toHaveTextContent(rest);
+      expect(within(summary).getByTestId('program-summary-rest')).not.toBeVisible();
     }
+  });
+
+  // jsdom does not run <summary>'s Enter/Space activation; full-ui.spec.ts checks the keys in a browser.
+  it('puts Read more in the tab order after the card link, and toggles the rest', async () => {
+    const user = userEvent.setup();
+    serveRecorded({});
+    renderMorgue();
+    const payroll = within(card('PAYROLL'));
+    const more = payroll.getByText('Read more').closest('summary');
+    if (!more) throw new Error('no <summary>');
+    payroll.getByRole('link', { name: 'PAYROLL' }).focus();
+    await user.tab();
+    expect(more).toHaveFocus();
+    await user.click(more);
+    expect(more.closest('details')).toHaveAttribute('open');
+    expect(payroll.getByTestId('program-summary-rest')).toBeVisible();
+    await user.click(more);
+    expect(more.closest('details')).not.toHaveAttribute('open');
   });
 
   it('nudges the lab scene when a card is hovered or focused', async () => {

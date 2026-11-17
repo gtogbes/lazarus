@@ -12,6 +12,7 @@ import { ProvePanel } from '../proof/ProvePanel';
 import { SabotagePanel } from '../sabotage/SabotagePanel';
 import { VitalsPanel } from '../vitals/VitalsPanel';
 import { loadProgramSource } from './loadProgramSource';
+import { ProgramSummary } from './ProgramSummary';
 import { SourcePanes } from './SourcePanes';
 
 /**
@@ -60,9 +61,7 @@ export function ProgramPage() {
         {program.id}
       </h1>
       <p className="mt-1 text-zinc-300">{program.description}</p>
-      <p className="mt-2 max-w-prose text-sm leading-relaxed text-zinc-300" data-testid="program-summary">
-        {program.summary}
-      </p>
+      <ProgramSummary summary={program.summary} className="mt-2 max-w-prose" />
       {/* Outside the Suspense boundary: a proof can start, and be watched, while the sources still load. */}
       <ProvePanel programId={program.id} {...(demo ? { onBeforeRun: endDemoForLiveRun } : {})} />
       <VitalsPanel programId={program.id} />

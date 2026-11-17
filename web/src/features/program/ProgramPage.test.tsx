@@ -53,6 +53,22 @@ describe('program view', () => {
     expect(screen.getByRole('button', { name: 'Prove it' })).toBeInTheDocument();
   });
 
+  it('shows the first sentence of the summary, with the rest behind Read more', async () => {
+    setViewportWidth(1280);
+    const user = userEvent.setup();
+    await openProgram('INVOICE');
+    const summary = screen.getByTestId('program-summary');
+    expect(within(summary).getByTestId('program-summary-lead')).toHaveTextContent(
+      'Prices one invoice line: quantity times unit price, less a percentage discount, plus VAT at 17.5%, 5% or 0% by code.',
+    );
+    const rest = within(summary).getByTestId('program-summary-rest');
+    expect(rest).not.toBeVisible();
+    await user.click(within(summary).getByText('Read more'));
+    expect(rest).toBeVisible();
+    expect(rest).toHaveTextContent('Two mutants: round VAT halves up, or round the discount instead of cutting it.');
+    expect(within(summary).getByText('Show less')).toBeVisible();
+  });
+
   it('highlights the quoted COBOL statement when a port statement gets keyboard focus (2.2)', async () => {
     setViewportWidth(1280);
     const user = userEvent.setup();

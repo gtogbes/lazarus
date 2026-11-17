@@ -86,6 +86,9 @@ test('morgue, with the recorded proofs loaded', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1, name: 'The morgue' })).toBeVisible();
   await expect(page.getByText('Checking for a recorded proof…')).toHaveCount(0);
   await expectNoViolations(page, 'morgue');
+  await page.getByRole('listitem', { name: 'INTCALC' }).getByText('Read more').click();
+  await expect(page.getByRole('listitem', { name: 'INTCALC' }).getByTestId('program-summary-rest')).toBeVisible();
+  await expectNoViolations(page, 'morgue, a summary opened');
 });
 
 test('not-found: unknown route and unknown program', async ({ page }) => {

@@ -1,6 +1,7 @@
-import type { ConsoleMessage, Page } from '@playwright/test';
+import type { ConsoleMessage, Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { PROGRAMS } from '../../src/ports/registry';
+import { summaryExcerpt } from '../src/features/program/summaryExcerpt';
 
 /**
  * The whole UI end to end, against the real proof API and real GnuCOBOL (docker runner):
@@ -33,6 +34,18 @@ function watchConsole(page: Page, allow?: RegExp): Watch {
   });
   page.on('pageerror', (e) => errors.push(e.message));
   return { errors };
+}
+
+/**
+ * The summary shows its first sentence (or about 140 characters); the rest is in
+ * a closed <details> until Read more is used.
+ */
+async function expectCollapsedSummary(container: Locator, summary: string): Promise<void> {
+  const { lead, rest } = summaryExcerpt(summary);
+  await expect(container.getByTestId('program-summary-lead')).toHaveText(lead);
+  await expect(container.getByTestId('program-summary-rest')).toBeHidden();
+  await expect(container.getByTestId('program-summary-rest')).toHaveText(rest);
+  await expect(container.getByText('Read more')).toBeVisible();
 }
 
 /** Records every `data-mood` the scene layer shows, in order, so short moods are not missed. */
@@ -219,10 +232,27 @@ test.describe('full UI', () => {
     await expect(cards).toHaveCount(PROGRAMS.length);
     for (const program of PROGRAMS) {
       const card = page.getByRole('listitem', { name: program.id });
-      await expect(card.getByTestId('program-summary')).toHaveText(program.summary);
+      await expectCollapsedSummary(card.getByTestId('program-summary'), program.summary);
       // The recorded proof status (Alive, Relapsed or Unproven) once it has loaded.
       await expect(card.getByText(/^(Alive|Relapsed|Unproven)$/)).toBeVisible();
     }
+    // Read more opens from the keyboard, right after the card link, and moves no card.
+    const payroll = page.getByRole('listitem', { name: 'PAYROLL' });
+    const corners = () => cards.evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().x, el.getBoundingClientRect().y]));
+    const before = await corners();
+    await payroll.getByRole('link', { name: 'PAYROLL', exact: true }).focus();
+    await page.keyboard.press('Tab');
+    const more = payroll.locator('summary');
+    await expect(more).toBeFocused();
+    await expect(more).toHaveCSS('outline-style', 'solid');
+    await page.keyboard.press('Enter');
+    await expect(payroll.getByTestId('program-summary-rest')).toBeVisible();
+    await expect(more.getByText('Show less')).toBeVisible();
+    await expect(more.getByText('Read more')).toBeHidden();
+    expect(await corners()).toEqual(before);
+    await expect(page.getByRole('heading', { level: 1, name: 'The morgue' })).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(payroll.getByTestId('program-summary-rest')).toBeHidden();
     expect(await sameCanvas(page), 'the scene canvas survives the route change').toBe(true);
     await expectFillsViewport(page, 'canvas');
 
@@ -243,7 +273,7 @@ test.describe('full UI', () => {
       await tagCanvas(page);
       await page.getByRole('link', { name: program.id, exact: true }).click();
       await expect(page.getByRole('heading', { level: 1, name: program.id })).toBeVisible();
-      await expect(page.getByTestId('program-summary')).toHaveText(program.summary);
+      await expectCollapsedSummary(page.getByTestId('program-summary'), program.summary);
       expect(await sameCanvas(page), 'the scene canvas survives the route change').toBe(true);
 
       const prove = page.getByRole('region', { name: 'Prove it' });
