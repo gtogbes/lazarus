@@ -39,6 +39,22 @@
    * 3 flashes in any second (WCAG 2.3.1, Requirement 14.5).
    */
   --animate-shock: shock 800ms ease-out 1 both;
+  /*
+   * Sit-up on Alive (ResurrectionFill.tsx): the upper body rises past 75deg,
+   * overshoots a little and settles, in 1.2 s. A transform only, no change of light.
+   */
+  --animate-sit-up: sit-up 1200ms ease-out 1 both;
+  @keyframes sit-up {
+    0% {
+      transform: rotate(0deg);
+    }
+    75% {
+      transform: rotate(80deg);
+    }
+    100% {
+      transform: rotate(75deg);
+    }
+  }
   @keyframes shock {
     0% {
       filter: none;
@@ -52,6 +68,19 @@
   }
 }
 
+/*
+ * The sit-up pivot (ResurrectionFill.tsx). The translates around it put the hip at
+ * 0 0, so it rotates about its own origin. Sitting holds at 75deg (leaning back a
+ * little) with or without motion; lying is instant, so nothing animates back down.
+ */
+.sit-pivot {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+[data-pose='sitting'] .sit-pivot {
+  transform: rotate(75deg);
+}
+
 /* The `shock` class runs the pulse only without reduced motion (Requirement 14.3). */
 @media (prefers-reduced-motion: no-preference) {
   .shock {
@@ -60,6 +89,16 @@
 
   /* A paused demo holds the pulse where it is (graphical-proof Requirement 11.7; DemoBar.tsx). */
   [data-demo-paused] .shock {
+    animation-play-state: paused;
+  }
+  [data-pose='sitting'][data-pose-motion='animate'] .sit-pivot {
+    animation: var(--animate-sit-up);
+  }
+  /* After a Revive, the shock pulse (800 ms) plays first, then the body sits up. */
+  [data-pose='sitting'][data-pose-after='shock'] .sit-pivot {
+    animation-delay: 800ms;
+  }
+  [data-demo-paused] .sit-pivot {
     animation-play-state: paused;
   }
 }

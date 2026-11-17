@@ -32,6 +32,15 @@
  * Pulses pass through `acceptPulse` (at most one a second, WCAG 2.3.1). Under reduced
  * motion there is no pulse and no scene event: the caption shows a static
  * "Revived ✓" instead, and the scene slot already shows the still.
+ *
+ * Sit-up: while the proof is Alive (not stopped at the time limit), the art carries
+ * `data-pose="sitting"` and the head, torso and arm pivot up at the hips; the legs
+ * stay on the slab. The `.sit-pivot` rules in index.css ease it up in 1.2 s with a
+ * small settle, after the shock pulse when the run was a Revive. Any other status
+ * (a new run, Relapsed, error, cancelled, reset) lies it straight back down, with no
+ * motion. Under reduced motion (`data-pose-motion="static"`) the sitting pose is
+ * shown without animation. The pose is a slow transform with no change of light,
+ * so it adds no flash (WCAG 2.3.1); the status stays in the caption text.
  */
 import { useEffect, useId, useRef } from 'react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -82,37 +91,58 @@ export function resurrectionLabel({ status, phase, cases, result, run }: LabelSt
 
 // ---------------------------------------------------------------------------
 // Drawing. viewBox units; the body spans BODY_LEFT .. BODY_LEFT + BODY_WIDTH.
+// The viewBox reaches up to y = -44 to leave headroom for the sitting pose's head
+// (its top is at about -42 at the 80deg overshoot), and keeps the original 320:140
+// aspect ratio, widened about the centre, so the figure's box on the page is the
+// same size whether the body lies or sits: nothing around it moves.
 
-const VIEW = { width: 320, height: 140 } as const;
+const ASPECT = 320 / 140;
+const VIEW_HEIGHT = 165;
+const VIEW = {
+  left: 160 - (VIEW_HEIGHT * ASPECT) / 2,
+  top: -44,
+  width: VIEW_HEIGHT * ASPECT,
+  height: VIEW_HEIGHT,
+} as const;
 const BODY_LEFT = 32;
 const BODY_WIDTH = 258;
 /** The slab: steel outline and a top only a little lighter than the panel, so the body stands out. */
 const SLAB_FILL = '#27272a';
 const SLAB_EDGE = '#52525b';
 
-/** The body, head on the left, lying on its back with the feet up. Filled by the parent `<g>`. */
+/** The hip joint the upper body pivots on to sit up: the back of the hips, on the slab. */
+const HIP = { x: 166, y: 88 } as const;
+
+/** A line in the slab colour over the body: the arm along the side, or between the legs. */
+function Crease({ d }: { readonly d: string }) {
+  return <path d={d} fill="none" stroke={SLAB_FILL} strokeWidth="2" strokeLinecap="round" />;
+}
+
+/**
+ * The body, head on the left, lying on its back with the feet up. Filled by the parent `<g>`.
+ * The head, torso and arm sit in `.sit-pivot`, which index.css rotates to sit up. The
+ * translates around it put HIP at the pivot's origin, so it rotates about 0 0 and
+ * never depends on how a browser resolves transform-origin on SVG.
+ */
 function Body() {
   return (
     <>
-      <circle cx="52" cy="70" r="14" />
-      <rect x="62" y="70" width="14" height="12" rx="3" />
-      {/* Torso, shoulders to hips. */}
-      <rect x="72" y="61" width="102" height="27" rx="13" />
-      {/* Legs, tapering from the hips to the ankles. */}
+      {/* Legs, tapering from the hips to the ankles, then the feet, toes up. */}
       <path d="M160 63 C 200 64, 240 70, 276 73 L 276 87 C 240 88, 200 88, 160 88 Z" />
-      {/* Feet, toes up. */}
       <rect x="272" y="57" width="14" height="31" rx="7" />
+      <Crease d="M190 81 C 220 81, 250 81, 274 81" />
+      <g transform={`translate(${HIP.x} ${HIP.y})`}>
+        <g className="sit-pivot">
+          <g transform={`translate(${-HIP.x} ${-HIP.y})`}>
+            <circle cx="52" cy="70" r="14" />
+            <rect x="62" y="70" width="14" height="12" rx="3" />
+            {/* Torso, shoulders to hips, and the arm along its side. */}
+            <rect x="72" y="61" width="102" height="27" rx="13" />
+            <Crease d="M86 79 H 168" />
+          </g>
+        </g>
+      </g>
     </>
-  );
-}
-
-/** Arm along the side and the line between the legs, drawn in the slab colour over either copy. */
-function Details() {
-  return (
-    <g fill="none" stroke={SLAB_FILL} strokeWidth="2" strokeLinecap="round">
-      <path d="M86 79 H 168" />
-      <path d="M190 81 C 220 81, 250 81, 274 81" />
-    </g>
   );
 }
 
@@ -140,6 +170,9 @@ export function ResurrectionFill({ loop }: ResurrectionFillProps) {
 
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const revivedAt = useProofRun((s) => s.revival.revivedAt);
+  const sitting = useProofRun((s) => s.status === 'alive' && s.result?.truncated !== true);
+  // A Revive run sits up after its shock pulse: pending while it runs, revivedAt once Alive.
+  const reviving = useProofRun((s) => s.revival.pending || s.revival.revivedAt !== null);
   const artRef = useRef<HTMLDivElement>(null);
   const lastPulseRef = useRef<number | null>(null);
   useEffect(() => {
@@ -163,7 +196,12 @@ export function ResurrectionFill({ loop }: ResurrectionFillProps) {
         ref={artRef}
         data-testid="resurrection-fill-art"
         className="rounded"
+        data-pose={sitting ? 'sitting' : 'lying'}
+        data-pose-motion={reduced ? 'static' : 'animate'}
+        data-pose-after={sitting && reviving && !reduced ? 'shock' : undefined}
         onAnimationEnd={(e) => {
+          // The sit-up animation inside bubbles here too; only the pulse's own end clears it.
+          if (e.target !== e.currentTarget) return;
           e.currentTarget.classList.remove('shock');
           delete e.currentTarget.dataset['demoBeat'];
         }}
@@ -171,18 +209,18 @@ export function ResurrectionFill({ loop }: ResurrectionFillProps) {
         <svg
           aria-hidden="true"
           focusable="false"
-          viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
+          viewBox={`${VIEW.left} ${VIEW.top} ${VIEW.width} ${VIEW.height}`}
           className="block h-auto w-full max-w-sm"
         >
           <defs>
             <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
-              <rect ref={clipRectRef} x={BODY_LEFT} y="0" width="0" height={VIEW.height} />
+              <rect ref={clipRectRef} x={BODY_LEFT} y={VIEW.top} width="0" height={VIEW.height} />
             </clipPath>
           </defs>
           {/* Slab: top, rim and two legs. */}
           <g fill={SLAB_FILL} stroke={SLAB_EDGE} strokeWidth="1.5">
-            <rect x="52" y="97" width="8" height="34" rx="1" />
-            <rect x="260" y="97" width="8" height="34" rx="1" />
+            <rect x="52" y="97" width="8" height="24" rx="1" />
+            <rect x="260" y="97" width="8" height="24" rx="1" />
             <rect x="20" y="88" width="280" height="10" rx="3" />
           </g>
           {/* Head block. */}
@@ -193,7 +231,6 @@ export function ResurrectionFill({ loop }: ResurrectionFillProps) {
           <g fill={VITALS_GRAPHICS.lit} clipPath={`url(#${clipId})`} data-testid="resurrection-fill-lit">
             <Body />
           </g>
-          <Details />
         </svg>
       </div>
       <figcaption className="mt-2 space-y-1 text-sm">

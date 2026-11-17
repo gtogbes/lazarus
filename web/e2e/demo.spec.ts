@@ -91,6 +91,7 @@ function parts(page: Page) {
     heartbeat: page.getByTestId('heartbeat'),
     grid: page.getByTestId('case-grid'),
     fill: page.getByTestId('resurrection-fill'),
+    fillArt: page.getByTestId('resurrection-fill-art'),
     card: page.getByTestId('counterexample-card'),
   };
 }
@@ -182,6 +183,9 @@ async function afterStep(page: Page, id: StepId, mode: Mode) {
       await expect(page.getByTestId('heartbeat-label')).toHaveText('✓ 2,000 / 2,000 matched');
       await expect(p.grid).toHaveAttribute('data-demo-beat', 'grid-alive');
       await expect(p.fill).toHaveAttribute('data-demo-beat', 'all-passed');
+      // The body sits up on Alive: animated with motion, a static pose without.
+      await expect(p.fillArt).toHaveAttribute('data-pose', 'sitting');
+      await expect(p.fillArt).toHaveAttribute('data-pose-motion', mode.reduced ? 'static' : 'animate');
       if (id === 'revive' && mode.reduced) await expect(page.getByTestId('resurrection-fill-revived')).toHaveText('Revived ✓');
       return;
     case 'prove-mutant':
@@ -190,6 +194,7 @@ async function afterStep(page: Page, id: StepId, mode: Mode) {
       await expect(page.getByTestId('heartbeat-label')).toContainText('✗');
       await expect(p.grid).toHaveAttribute('data-status', 'relapsed');
       await expect(p.grid).not.toHaveAttribute('data-failed-index', '');
+      await expect(p.fillArt).toHaveAttribute('data-pose', 'lying');
       return;
     default:
       return;

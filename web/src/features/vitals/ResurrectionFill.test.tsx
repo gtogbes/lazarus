@@ -147,6 +147,89 @@ describe('ResurrectionFill', () => {
     expect(figure.querySelector('[aria-live], [role="status"], [role="alert"], [role="log"]')).toBeNull();
   });
 
+  describe('sit-up pose on Alive', () => {
+    const art = () => screen.getByTestId('resurrection-fill-art');
+    const stubReducedMotion = (matches: boolean) =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: matches && query.includes('reduce'),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+    const alive = () =>
+      act(() => useProofRun.setState({ status: 'alive', program: 'PAYROLL', run: RUN, cases: 2000, result: EQUIVALENT_RESULT }));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('lies until the proof is Alive, then sits, animated', () => {
+      stubReducedMotion(false);
+      render(<ResurrectionFill loop={harness().loop} />);
+      expect(art()).toHaveAttribute('data-pose', 'lying');
+      act(() => useProofRun.setState({ status: 'reanimating', program: 'PAYROLL', run: RUN, cases: 1999 }));
+      expect(art()).toHaveAttribute('data-pose', 'lying');
+      alive();
+      expect(art()).toHaveAttribute('data-pose', 'sitting');
+      expect(art()).toHaveAttribute('data-pose-motion', 'animate');
+      expect(art()).not.toHaveAttribute('data-pose-after');
+      // The legs stay out of the pivot; head and torso are in it, in both copies of the body.
+      const pivots = art().querySelectorAll('.sit-pivot');
+      expect(pivots).toHaveLength(2);
+      for (const pivot of pivots) expect(pivot.querySelector('circle')).not.toBeNull();
+      expect(art().querySelector('.sit-pivot path[d^="M160"]')).toBeNull();
+      expect(art().querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it.each([
+      ['a new run', { status: 'reanimating', cases: 0, result: null }],
+      ['Relapsed', { status: 'relapsed', phase: 'shrinking', cases: 37, result: DIVERGED_RESULT }],
+      ['an error', { status: 'error', result: null }],
+      ['cancelled', { status: 'cancelled', result: null }],
+      ['reset', { status: 'idle', cases: 0, result: null }],
+    ] as const)('lies back down on %s', (_name, next) => {
+      stubReducedMotion(false);
+      render(<ResurrectionFill loop={harness().loop} />);
+      alive();
+      expect(art()).toHaveAttribute('data-pose', 'sitting');
+      act(() => useProofRun.setState(next));
+      expect(art()).toHaveAttribute('data-pose', 'lying');
+    });
+
+    it('does not sit up for an Alive stopped at the time limit (nothing was fully proven)', () => {
+      stubReducedMotion(false);
+      render(<ResurrectionFill loop={harness().loop} />);
+      act(() =>
+        useProofRun.setState({ status: 'alive', run: RUN, cases: 900, result: { ...EQUIVALENT_RESULT, truncated: true, cases: 900 } }),
+      );
+      expect(art()).toHaveAttribute('data-pose', 'lying');
+    });
+
+    it('shows the sitting pose statically under reduced motion, with ✓ Alive in text', () => {
+      stubReducedMotion(true);
+      const { loop, frame } = harness();
+      render(<ResurrectionFill loop={loop} />);
+      alive();
+      frame();
+      expect(art()).toHaveAttribute('data-pose', 'sitting');
+      expect(art()).toHaveAttribute('data-pose-motion', 'static');
+      expect(art()).not.toHaveAttribute('data-pose-after');
+      expect(text('resurrection-fill-status')).toBe('✓ Alive');
+    });
+
+    it('sits up after the shock pulse when a Revive ends Alive', () => {
+      stubReducedMotion(false);
+      vi.spyOn(performance, 'now').mockReturnValue(50_000);
+      render(<ResurrectionFill loop={harness().loop} />);
+      act(() => useProofRun.setState({ status: 'reanimating', program: 'PAYROLL', run: RUN, revival: { pending: true, revivedAt: null } }));
+      act(() => useProofRun.setState({ status: 'alive', cases: 2000, result: EQUIVALENT_RESULT }));
+      expect(art()).toHaveAttribute('data-pose-after', 'shock');
+      act(() => useProofRun.setState({ revival: { pending: false, revivedAt: 1 } }));
+      expect(art()).toHaveClass('shock');
+      expect(art()).toHaveAttribute('data-pose', 'sitting');
+      expect(art()).toHaveAttribute('data-pose-after', 'shock');
+      vi.restoreAllMocks();
+      useSceneNudge.setState({ startedAt: null, revivedAt: null });
+    });
+  });
+
   describe('revive shock pulse (10.3, 10.5, 14.5)', () => {
     const art = () => screen.getByTestId('resurrection-fill-art');
     const revived = (at: number) =>
