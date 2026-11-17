@@ -45,8 +45,27 @@ export async function buildProveRequest(body: ProveRequestBody): Promise<{ body:
 
 const MAX_ERROR_MESSAGE = 300;
 
+export const BUSY_MESSAGE = 'The lab is busy running another proof. Try again in a moment, or replay the recorded proof.';
+export const UNAVAILABLE_MESSAGE =
+  'The proof service is unavailable right now. Try again in a moment, or replay the recorded proof.';
+
+/**
+ * Statuses the proof API itself never sends. Hosted, AWS sends them in front of it:
+ * 429 when another proof holds Lambda's only reserved concurrency slot, and
+ * 502/503/504 from CloudFront when the origin fails. Their bodies are not ours,
+ * so the message is fixed.
+ */
+const INFRASTRUCTURE_MESSAGES: Readonly<Record<number, string>> = {
+  429: BUSY_MESSAGE,
+  502: UNAVAILABLE_MESSAGE,
+  503: UNAVAILABLE_MESSAGE,
+  504: UNAVAILABLE_MESSAGE,
+};
+
 /** The `{error}` message of a non-200 response, or a generic one if the body is not that shape. */
 async function errorMessage(response: Response): Promise<string> {
+  const fixed = INFRASTRUCTURE_MESSAGES[response.status];
+  if (fixed !== undefined) return fixed;
   const fallback = `The proof service answered HTTP ${response.status}.`;
   try {
     const body: unknown = await response.json();

@@ -110,6 +110,17 @@ describe('Prove panel recorded fallback (Requirement 6)', () => {
     expect(screen.getByTestId('recorded-offer')).toHaveTextContent('the real port');
   });
 
+  it('says the lab is busy on HTTP 429 and still offers the recorded proof', async () => {
+    const user = userEvent.setup();
+    stubFetch(() => jsonResponse(429, { Message: 'Rate Exceeded.' }));
+    render(<ProvePanel programId="PAYROLL" />);
+    await user.click(proveButton());
+    await vi.waitFor(() => expect(status()).toHaveTextContent('Proof failed'));
+    expect(screen.getByTestId('proof-error')).toHaveTextContent('The lab is busy running another proof.');
+    expect(screen.getByTestId('proof-error')).not.toHaveTextContent('429');
+    expect(offer()).toBeInTheDocument();
+  });
+
   it('replays the recording for the same mutant, labelled Recorded with its date (6.1, 6.2)', async () => {
     const user = userEvent.setup();
     useProofRun.getState().selectMutant('strict-band-edge');

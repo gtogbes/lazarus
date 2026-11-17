@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProveEvent } from '../../../../src/api/events';
-import { buildProveRequest, PROVE_URL, ProveRequestError, sha256Hex, streamProve } from './proveClient';
+import {
+  BUSY_MESSAGE,
+  buildProveRequest,
+  PROVE_URL,
+  UNAVAILABLE_MESSAGE, ProveRequestError, sha256Hex, streamProve } from './proveClient';
 import { EQUIVALENT_RESULT, fakeStream, jsonResponse, STARTED, stubFetch } from './testing';
 
 afterEach(() => {
@@ -66,6 +70,27 @@ describe('streamProve', () => {
     expect(error).toMatchObject({ kind: 'http', status: 400, message: 'Unknown program' });
   });
 
+  it.each([
+    [429, { Message: 'Rate Exceeded.' }, BUSY_MESSAGE],
+    [502, '<html>Bad Gateway</html>', UNAVAILABLE_MESSAGE],
+    [503, { error: 'ignored' }, UNAVAILABLE_MESSAGE],
+    [504, '', UNAVAILABLE_MESSAGE],
+  ])('rejects HTTP %i from AWS with a plain message instead of the status', async (status, body, message) => {
+    stubFetch(() =>
+      typeof body === 'string' ? Promise.resolve(new Response(body, { status })) : jsonResponse(status, body),
+    );
+    await expect(streamProve({ program: 'PAYROLL' }, () => {}, new AbortController().signal)).rejects.toMatchObject({
+      kind: 'http',
+      status,
+      message,
+    });
+  });
+  it('falls back to the status for other errors without an {error} body', async () => {
+    stubFetch(() => Promise.resolve(new Response('nope', { status: 500 })));
+    await expect(streamProve({ program: 'PAYROLL' }, () => {}, new AbortController().signal)).rejects.toMatchObject({
+      message: 'The proof service answered HTTP 500.',
+    });
+  });
   it('rejects as a network error when the service cannot be reached', async () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')));
     await expect(streamProve({ program: 'PAYROLL' }, () => {}, new AbortController().signal)).rejects.toMatchObject({
