@@ -7,6 +7,8 @@ through the port, and diffs the outputs. Any divergence is reported with the
 smallest input that reproduces it. A web lab shows the proof live, with a 3D
 scene, a sabotage panel of deliberate porting mistakes and a recorded demo mode.
 
+Built for [Kiroween 2026](https://kiroween.devpost.com/).
+
 ## The programs
 
 - **INTCALC.** Works out the interest a loan account earns over a number of days, and its new balance; overdrawn accounts pay 12.5 points more on the rate. COBOL rounds the interest half a cent away from zero, and an amount too big for its field silently loses its leading digits instead of failing. A port using floating point or ordinary rounding gets cents wrong, and cannot print the -0.00 that COBOL gives when a cut-off negative amount leaves zero. Two mutants: drop the rounding, or charge the penalty on a zero balance.
