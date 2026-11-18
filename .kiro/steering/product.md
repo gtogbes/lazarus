@@ -19,11 +19,11 @@ its behaviour. Secondary: hackathon judges, who need to see it work in under 3 m
 - Out: CICS/screen programs, embedded SQL, JCL, other legacy languages.
 
 ## Differentiation
-Kiroween 2025 already had several COBOL-to-modern translators (for example
-PunchRevive, COBRA, CodePhoenix). Translation alone is not novel. Lazarus's
-claim is proof: it executes the original binary and shows, with generated
-inputs, that the port behaves identically. Every feature should strengthen
-that claim; cut anything that is "just another translator".
+Translating COBOL to a modern language is not novel. Lazarus's point is proof:
+it runs the original GnuCOBOL binary and shows, with generated property-based
+cases, that the port gives the same output, or shows the smallest input where
+it does not. Every feature should strengthen that claim; cut anything that is
+"just another translator".
 
 ## Constraints from the official rules
 - The hosted demo must stay up, free and unrestricted until the end of judging
