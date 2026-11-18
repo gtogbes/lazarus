@@ -1,7 +1,7 @@
 # Kiro journal
 
-Raw notes for the "How Kiro was used" write-up. Add an entry whenever a Kiro
-feature changes the outcome. Dates are UK time.
+Notes on where Kiro features (specs, steering, hooks, property tests) changed the
+outcome. Add an entry when one does. Dates are UK time.
 
 ## 2026-11-02: equivalence harness, first slice
 
@@ -71,8 +71,8 @@ Three hooks in `.kiro/hooks/`:
   tells Kiro the COBOL is the source of truth and to fix the port until it
   matches, then log the change here.
 - **Keep .kiro/ in the repo** (command, PreToolUse on shell tools): blocks
-  `git add`/`git commit` while `.kiro/` is gitignored, because the rules
-  disqualify submissions without it.
+  `git add`/`git commit` while `.kiro/` is gitignored, so the specs, steering
+  and hooks always ship with the code.
 
 Testing the guard hook caught a bug in it: `git check-ignore` skips files that
 are already tracked, so it never blocked. `--no-index` fixed it. I only found
@@ -90,6 +90,6 @@ plan in two ways:
   default") turned the manual mutation script into a product feature: visitors
   pick a realistic migration mistake and watch the proof catch it. The same
   mutants become a permanent mutation test.
-- **No visitor-edited code.** Letting judges edit the port would mean running
+- **No visitor-edited code.** Letting visitors edit the port would mean running
   arbitrary code on the Lambda. Predefined mutants give the same "break it
   yourself" moment with no code execution risk.
