@@ -54,6 +54,14 @@ Run `npm run web:build` at the root, then from `infra/` (after `npm install` the
 Route 53 zone is optional: add `-c domainName=<domain> -c hostedZoneDomain=<zone> -c hostedZoneId=<id>`.
 Without one, the site is served on its `*.cloudfront.net` address.
 
+## Architecture
+
+![Lazarus on AWS](docs/architecture/lazarus-aws.png)
+
+CloudFront serves the web build from a private S3 bucket and signs `/api/*` requests (OAC) to a
+Lambda Function URL, which runs the proof against GnuCOBOL 3.1.2 and streams NDJSON back.
+AWS Architecture Icons via the [diagrams](https://diagrams.mingrammer.com/) library.
+
 ## Repository layout
 
 ```
