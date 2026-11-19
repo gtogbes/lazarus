@@ -9,7 +9,7 @@ outcome. Add an entry when one does. Dates are UK time.
 A short spike before the design changed it: GnuCOBOL output is block-buffered when
 piped, and `stdbuf -oL` makes it flush per record. That turned the design from
 "one container per test case" (~0.5 s each) into one long-lived container
-answering record by record (~1 ms each). 50,000 generated cases now run in 12 s.
+answering record by record (~1 ms each).
 
 **Steering.** `tech.md` says never use JS `number` for money and lists COBOL
 truncation and ROUNDED rules. The first port used bigint rationals from the start

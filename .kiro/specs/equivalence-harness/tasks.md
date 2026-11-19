@@ -19,7 +19,7 @@
 - [x] 8. Boundary-biased PIC generators in `src/semantics/arbitraries.ts`
   - _Requirements: 4.1, 4.2_
 - [x] 9. Port `src/ports/intcalc.ts` and `intcalc.equivalence.test.ts` passing 1,000 runs
-  - Verified at 50,000 runs. Mutation check: removing ROUNDED fails within 2 cases.
+  - Mutation check: removing ROUNDED fails within 2 cases.
   - _Requirements: 2.1, 3, 4_
 - [x] 10. JSON results file for the UI
   - `checkEquivalence` uses `fc.check` and returns status, seed, cases, shrinks and the
@@ -28,7 +28,7 @@
 - [x] 12. Second and third sample programs
   - `PAYROLL.cbl`: COMP-3 working storage, ON SIZE ERROR, banker's rounding, tax bands
   - `INVOICE.cbl`: silent high-order truncation, truncated discount, banker's VAT, bad VAT codes
-  - Both ports pass 50,000 cases. Mutation checks: 5 of 6 rule-breaking edits caught
+  - Both ports pass their equivalence tests. Mutation checks: 5 of 6 rule-breaking edits caught
     within 26 cases; the 6th (`<=` vs `<` on a tax band edge) is an equivalent mutant
   - _Requirements: 2.1, 3, 4_
 - [x] 11. Unit tests for `compileCobol` cache and `CompileError` path

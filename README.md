@@ -7,6 +7,8 @@ through the port, and diffs the outputs. Any divergence is reported with the
 smallest input that reproduces it. A web lab shows the proof live, with a 3D
 scene, a sabotage panel of deliberate porting mistakes and a recorded demo mode.
 
+Built for [Kiroween 2026](https://kiroween.devpost.com/).
+
 ## The programs
 
 - **INTCALC.** Works out the interest a loan account earns over a number of days, and its new balance; overdrawn accounts pay 12.5 points more on the rate. COBOL rounds the interest half a cent away from zero, and an amount too big for its field silently loses its leading digits instead of failing. A port using floating point or ordinary rounding gets cents wrong, and cannot print the -0.00 that COBOL gives when a cut-off negative amount leaves zero. Two mutants: drop the rounding, or charge the penalty on a zero balance.
@@ -51,6 +53,14 @@ Run `npm run web:build` at the root, then from `infra/` (after `npm install` the
 `npx cdk deploy --all -c budgetEmail=<email>`. A custom domain in an existing
 Route 53 zone is optional: add `-c domainName=<domain> -c hostedZoneDomain=<zone> -c hostedZoneId=<id>`.
 Without one, the site is served on its `*.cloudfront.net` address.
+
+## Architecture
+
+![Lazarus on AWS](docs/architecture/lazarus-aws.png)
+
+CloudFront serves the web build from a private S3 bucket and signs `/api/*` requests (OAC) to a
+Lambda Function URL, which runs the proof against GnuCOBOL 3.1.2 and streams NDJSON back.
+AWS Architecture Icons via the [diagrams](https://diagrams.mingrammer.com/) library.
 
 ## Repository layout
 
